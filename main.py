@@ -4,10 +4,10 @@ import gspread
 from google.oauth2.service_account import Credentials
 import google.generativeai as genai
 
-# --- הגדרת הדף (בלי המילה הבעייתית direction) ---
+# --- הגדרת הדף ---
 st.set_page_config(page_title="שיעבודא פון", layout="wide")
 
-# --- הוספת יישור לימין (RTL) דרך CSS ---
+# --- עיצוב (RTL) ---
 st.markdown("""
 <style>
     .stApp {
@@ -17,7 +17,6 @@ st.markdown("""
     h1, h2, h3, p, div, input, .stTextInput > label, .stSelectbox > label {
         text-align: right;
     }
-    /* תיקון ליישור של הצ'אט */
     .stChatMessage {
         direction: rtl;
         text-align: right;
@@ -25,13 +24,57 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- משתנים גלובליים ---
-SPREADSHEET_ID = '1PB-FJsvBmCy8hwA_S1S5FLY_QU9P2VstDAJMMdtufHM'
+# --- המוח של המערכת (הפרומפט שלך) ---
 SYSTEM_MANUAL = """
-הנחיות טכניות (טרם הוזנו).
+אתה "הנציג הדיגיטלי של שיעבודא פון". תפקידך לשמש כמנתח נתונים וכמרכז מידע עבור משתמשי המערכת.
+השפה שלך: מכובדת, אדיבה ונימוסית ("בסגנון בנקאי חביב"). השתמש במילים כמו "ידידי", "שלום רב", "בשמחה", "לשירותך". 
+עליך לייצג את המערכת כגוף אחראי ומסודר, תוך שמירה על יחס אישי וחם לבני הישיבה.
+
+### חוק ברזל: הסתמכות על נתונים בזמן אמת
+אין להסתמך על מידע קבוע מראש לגבי זהות המשתמשים או המנהלים. 
+עליך לבדוק בכל פנייה את הקבצים המצורפים:
+1. 'שיעבודא פון - מנהלים.csv': בדוק האם מספר המשתמש של הפונה מופיע כאן. אם כן - הוא מנהל.
+2. 'שיעבודא פון - משתמשים.csv': זהו מקור האמת ליתרות, שמות וסטטוס חשבון.
+
+### הרשאות גישה
+- משתמש רגיל: רשאי לקבל מידע על החשבון שלו בלבד (יתרה ופירוט פעולות אישי).
+- מנהל: רשאי לקבל מידע על כל משתמש, לראות את יתרת ה"קבוצה" (בגיליון קבוצות), ולזהות "נפילות כספים" (כאשר יתרת הקבוצה נמוכה מ-5000).
+
+### לוגיקת המערכת הטלפונית (IVR) - הנחיות למשתמש
+- 1: שלוחת העברות. (חשוב להבהיר: הכסף יורד מהחשבון מיד עם אישור הסכום, עוד לפני בחירת הנמען).
+- 2: היסטוריית פעולות (1 - פירוט מלא, 2 - פירוט קצר).
+- 3: רישום לשירות צינתוקים (הודעות על כניסת כספים).
+- 4: שינוי סיסמה אישית.
+- 5: אלפון (1 - חיפוש לפי שם, 2 - חיפוש לפי מספר).
+- 6: בדיקת יתרה עדכנית.
+- 9: הודעות אישיות (1 - שמיעה ומחיקה ב-0, 2 - הקלטת הודעה לנמען ספציפי).
+
+### לוגיקת ה-500 (חצאי שקלים)
+הסבר למשתמשים כיצד להקיש סכום הכולל חצי שקל: יש להקיש 5 ואז את סכום השקלים (בפורמט של שתי ספרות).
+דוגמאות:
+- עבור 5.5 ש"ח: יש להקיש 505.
+- עבור 10.5 ש"ח: יש להקיש 510.
+- עבור 55 ש"ח (עגול): יש להקיש 55.
+
+### מקלדת T9 לחיפוש באלפון (שלוחה 5)
+הדרכת המשתמש לחיפוש שם (יש להפריד בין אות לאות באמצעות כוכבית *):
+3: א ב ג | 2: ד ה ו | 6: ז ח ט | 5: י כ ל | 4: מ נ ס | 9: ס ע פ | 8: צ ק | 7: ר ש ת.
+דוגמה לחיפוש "דוד": 2 * 222 * 2.
+
+### טיפול בתקלות (Troubleshooting)
+- "נפילת כספים": במידה והשיחה התנתקה לאחר הורדת הכסף אך לפני בחירת הנמען, הסבר למשתמש בנימוס כי המנהל יבצע זיכוי ידני במערכת לאחר בדיקה.
+- חסימת מינוס: מסגרת המינוס המקסימלית היא 200-. במידה והחשבון חסום (עקב אי החלפת סיסמה בעבר או בקשה אישית), יש להפנות את המשתמש לנציג בשיעורו.
+- מחיקת הודעות: ניתן להקיש 0 במהלך שמיעת הודעה אישית כדי למחוק אותה לצמיתות מהמערכת.
+
+### כנות המערכת
+במידה ונשאלת שאלה שאין עליה תשובה בנתונים או בנהלים, ענה במכובדות: 
+"ידידי, כרגע אין בידי מידע מדויק בנושא זה. העברתי את פנייתך לבדיקת המנהל, והוא יחזור אליך בהקדם."
 """
 
-# --- פונקציות חיבור ---
+# --- משתנים גלובליים ---
+SPREADSHEET_ID = '1PB-FJsvBmCy8hwA_S1S5FLY_QU9P2VstDAJMMdtufHM'
+
+# --- חיבורים ---
 @st.cache_resource
 def get_client():
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
@@ -51,22 +94,25 @@ def get_all_data():
     client = get_client()
     sh = client.open_by_key(SPREADSHEET_ID)
     
+    # שליפת כל הגיליונות החשובים
     ws_users = sh.worksheet("משתמשים")
     df_users = pd.DataFrame(ws_users.get_all_records())
     
     ws_actions = sh.worksheet("פעולות")
     df_actions = pd.DataFrame(ws_actions.get_all_records())
     
+    # ניסיון לשליפת מנהלים
     try:
         ws_admins = sh.worksheet("מנהלים")
         df_admins = pd.DataFrame(ws_admins.get_all_records())
-        # המרה בטוחה של המזהים לטקסט
         admin_ids = df_admins[df_admins.columns[0]].astype(str).tolist()
     except:
         admin_ids = []
+        df_admins = pd.DataFrame()
         
-    return df_users, df_actions, admin_ids
+    return df_users, df_actions, df_admins, admin_ids
 
+# --- עיבוד נתונים לתצוגה גרפית (לא ל-AI) ---
 def process_data_for_display(df_actions, user_id):
     df_actions['מספר משתמש מקור'] = df_actions['מספר משתמש מקור'].astype(str)
     df_actions['מספר משתמש יעד'] = df_actions['מספר משתמש יעד'].astype(str)
@@ -90,38 +136,34 @@ def process_data_for_display(df_actions, user_id):
         else:
             return f"התקבל מ-{row['שם מקור']}", amount
 
-    # שימוש ב-apply בצורה בטוחה יותר למניעת שגיאות
     if not my_actions.empty:
         results = my_actions.apply(lambda row: clean_row(row), axis=1)
-        # פיצול התוצאות לעמודות
         my_actions['תיאור'] = [res[0] for res in results]
         my_actions['סכום נטו'] = [res[1] for res in results]
         
     return my_actions
 
-# --- התחלת האפליקציה ---
+# --- האפליקציה ---
 configure_genai()
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if 'authenticated' not in st.session_state:
     st.session_state.authenticated = False
-if 'is_admin' not in st.session_state:
-    st.session_state.is_admin = False
 
 # --- מסך כניסה ---
 if not st.session_state.authenticated:
     c1, c2, c3 = st.columns([1,2,1])
     with c2:
-        st.title("🔐 כניסה למערכת")
+        st.title("🤖 שיעבודא פון - כניסה")
         with st.form("login"):
             uid = st.text_input("מספר משתמש")
             pwd = st.text_input("סיסמה", type="password")
             if st.form_submit_button("התחבר", use_container_width=True):
                 try:
-                    df_users, _, admin_ids = get_all_data()
+                    df_users, _, _, admin_ids = get_all_data()
                     
-                    # ניקוי רווחים והמרה לטקסט
+                    # ניקוי והתאמה
                     df_users['מספר משתמש'] = df_users['מספר משתמש'].astype(str).str.strip()
                     df_users['סיסמה'] = df_users['סיסמה'].astype(str).str.strip()
                     uid_clean = str(uid).strip()
@@ -132,7 +174,6 @@ if not st.session_state.authenticated:
                     if not user.empty:
                         st.session_state.authenticated = True
                         st.session_state.user = user.iloc[0].to_dict()
-                        # בדיקת מנהל
                         st.session_state.is_admin = uid_clean in [str(x).strip() for x in admin_ids]
                         st.rerun()
                     else:
@@ -145,8 +186,8 @@ else:
     u = st.session_state.user
     is_admin = st.session_state.is_admin
     
-    # טעינה מחדש כדי לקבל נתונים עדכניים
-    df_users, df_actions, _ = get_all_data()
+    # טעינת נתונים עדכניים
+    df_users, df_actions, df_admins, _ = get_all_data()
     
     st.sidebar.title(f"שלום, {u['שם משתמש']}")
     role = "מנהל מערכת" if is_admin else "משתמש רגיל"
@@ -156,80 +197,102 @@ else:
         st.session_state.authenticated = False
         st.rerun()
 
-    # חלוקת מסך
     col_dash, col_chat = st.columns([1, 1.5])
 
-    # צד ימין - נתונים
+    # צד ימין: לוח נתונים גרפי
     with col_dash:
         st.subheader("📊 תמונת מצב")
         
-        # עדכון יתרה מהטבלה החדשה (ולא מהזיכרון הישן)
-        current_balance = df_users[df_users['מספר משתמש'].astype(str) == str(u['מספר משתמש'])]['יתרה'].iloc[0]
-        st.metric("יתרה נוכחית", f"₪{current_balance:,.2f}")
+        # שליפת יתרה עדכנית
+        curr_user_row = df_users[df_users['מספר משתמש'].astype(str) == str(u['מספר משתמש'])]
+        if not curr_user_row.empty:
+            current_balance = curr_user_row['יתרה'].iloc[0]
+            st.metric("יתרה נוכחית", f"₪{current_balance:,.2f}")
         
         st.divider()
         
         if is_admin:
             st.success("מצב מנהל פעיל")
-            st.write("פעולות אחרונות בכל המערכת:")
+            st.write("פעולות אחרונות (כלל המערכת):")
             st.dataframe(df_actions.tail(10).iloc[::-1], hide_index=True, use_container_width=True)
         else:
-            st.write("הפעולות האחרונות שלי:")
+            st.write("פעולות אחרונות (אישי):")
             my_data = process_data_for_display(df_actions, u['מספר משתמש'])
-            
             if not my_data.empty:
-                display = my_data[['תאריך לועזי', 'תיאור', 'סכום נטו']].tail(10).iloc[::-1]
+                display = my_data[['תאריך לועזי', 'תיאור', 'סכום נטו']].tail(8).iloc[::-1]
                 
-                # צביעת סכומים
                 def color_vals(val):
-                    color = 'red' if val < 0 else 'green'
-                    return f'color: {color}; font-weight: bold;'
+                    return f'color: {"red" if val < 0 else "green"}; font-weight: bold;'
                 
                 st.dataframe(display.style.map(color_vals, subset=['סכום נטו']).format({'סכום נטו': '₪{:.2f}'}), 
                              hide_index=True, use_container_width=True)
-            else:
-                st.info("לא נמצאו פעולות בחשבון זה.")
 
-    # צד שמאל - צ'אט
+    # צד שמאל: הצ'אט (המוח)
     with col_chat:
-        st.subheader("💬 עוזר חכם")
+        st.subheader("💬 הנציג הדיגיטלי")
 
-        # הצגת הודעות קודמות
         for msg in st.session_state.messages:
             with st.chat_message(msg["role"]):
                 st.write(msg["content"])
 
-        # קלט חדש
-        if prompt := st.chat_input("שאל אותי שאלה..."):
+        if prompt := st.chat_input("שאל אותי משהו..."):
             st.session_state.messages.append({"role": "user", "content": prompt})
             with st.chat_message("user"):
                 st.write(prompt)
 
             with st.chat_message("assistant"):
-                with st.spinner("חושב..."):
+                with st.spinner("בודק נתונים..."):
                     try:
-                        # הכנת הנתונים ל-AI
+                        # הכנת הקונטקסט ל-AI
                         context_str = ""
+                        
                         if is_admin:
-                            users_csv = df_users[['מספר משתמש', 'שם משתמש', 'יתרה']].to_csv(index=False)
-                            actions_csv = df_actions.tail(200).to_csv(index=False)
-                            context_str = f"משתמשים:\n{users_csv}\n\nפעולות אחרונות:\n{actions_csv}"
-                            sys_role = "אתה מנהל המערכת. יש לך גישה לכל הנתונים. ענה על שאלות לגבי כל משתמש."
+                            # למנהל נותנים את כל הקבצים
+                            users_csv = df_users.to_csv(index=False)
+                            admins_csv = df_admins.to_csv(index=False)
+                            # מגבילים ל-500 פעולות אחרונות למניעת עומס
+                            actions_csv = df_actions.tail(500).to_csv(index=False)
+                            
+                            context_str = f"""
+                            קבצים מצורפים:
+                            1. שיעבודא פון - משתמשים.csv:
+                            {users_csv}
+                            
+                            2. שיעבודא פון - מנהלים.csv:
+                            {admins_csv}
+                            
+                            3. היסטוריית פעולות (500 אחרונות):
+                            {actions_csv}
+                            
+                            המשתמש הנוכחי הוא מנהל מערכת (מזהה {u['מספר משתמש']}).
+                            """
                         else:
-                            my_data = process_data_for_display(df_actions, u['מספר משתמש'])
-                            context_str = my_data.to_csv(index=False)
-                            sys_role = f"אתה העוזר של {u['שם משתמש']}. ענה רק על הנתונים שלו."
+                            # למשתמש רגיל נותנים רק את השורה שלו
+                            my_user_row = curr_user_row.to_csv(index=False)
+                            my_actions_raw = df_actions[(df_actions['מספר משתמש מקור'].astype(str) == str(u['מספר משתמש'])) | 
+                                                        (df_actions['מספר משתמש יעד'].astype(str) == str(u['מספר משתמש']))]
+                            my_actions_csv = my_actions_raw.tail(50).to_csv(index=False)
+                            
+                            context_str = f"""
+                            קבצים מצורפים (רלוונטיים למשתמש זה בלבד):
+                            1. שיעבודא פון - משתמשים.csv (שורה רלוונטית):
+                            {my_user_row}
+                            
+                            2. היסטוריית פעולות אישית:
+                            {my_actions_csv}
+                            
+                            המשתמש הנוכחי הוא משתמש רגיל (שם: {u['שם משתמש']}, מזהה: {u['מספר משתמש']}).
+                            """
 
                         full_prompt = f"""
-                        {sys_role}
-                        
-                        המדריך הטכני של המערכת:
                         {SYSTEM_MANUAL}
                         
-                        הנתונים לניתוח:
+                        ---------------
+                        נתוני זמן אמת:
                         {context_str}
+                        ---------------
                         
-                        שאלה: {prompt}
+                        שאלה/בקשה של המשתמש: {prompt}
                         """
                         
                         model = genai.GenerativeModel('gemini-1.5-flash')
@@ -239,5 +302,5 @@ else:
                         st.session_state.messages.append({"role": "assistant", "content": response.text})
                         
                     except Exception as e:
-                        st.error("שגיאה בתקשורת עם ה-AI")
-                        st.error(e)
+                        st.error("אירעה שגיאה בעיבוד הבקשה.")
+                        print(e)
