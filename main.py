@@ -4,18 +4,22 @@ import gspread
 from google.oauth2.service_account import Credentials
 import google.generativeai as genai
 
-# --- תיקון השגיאה: הסרנו את direction="rtl" מכאן ---
+# --- הגדרת הדף (בלי המילה הבעייתית direction) ---
 st.set_page_config(page_title="שיעבודא פון", layout="wide")
 
-# --- הוספת יישור לימין (RTL) בצורה תקינה ---
+# --- הוספת יישור לימין (RTL) דרך CSS ---
 st.markdown("""
 <style>
     .stApp {
         direction: rtl;
         text-align: right;
     }
-    /* התאמות נוספות לכותרות */
-    h1, h2, h3, p, div {
+    h1, h2, h3, p, div, input, .stTextInput > label, .stSelectbox > label {
+        text-align: right;
+    }
+    /* תיקון ליישור של הצ'אט */
+    .stChatMessage {
+        direction: rtl;
         text-align: right;
     }
 </style>
@@ -23,10 +27,8 @@ st.markdown("""
 
 # --- משתנים גלובליים ---
 SPREADSHEET_ID = '1PB-FJsvBmCy8hwA_S1S5FLY_QU9P2VstDAJMMdtufHM'
-# כאן נכנס המדריך הטכני שה-AI ילמד בהמשך
 SYSTEM_MANUAL = """
-כרגע אין מידע טכני ספציפי. 
-אם שואלים אותך שאלות טכניות, תענה שאתה עדיין לומד את המערכת.
+הנחיות טכניות (טרם הוזנו).
 """
 
 # --- פונקציות חיבור ---
@@ -58,10 +60,10 @@ def get_all_data():
     try:
         ws_admins = sh.worksheet("מנהלים")
         df_admins = pd.DataFrame(ws_admins.get_all_records())
-        # מניחים שהעמודה הראשונה היא המספר המזהה
+        # המרה בטוחה של המזהים לטקסט
         admin_ids = df_admins[df_admins.columns[0]].astype(str).tolist()
     except:
-        admin_ids = [] 
+        admin_ids = []
         
     return df_users, df_actions, admin_ids
 
@@ -82,18 +84,22 @@ def process_data_for_display(df_actions, user_id):
             amount = float(row['סכום'])
         except:
             amount = 0
-        
+            
         if is_sender:
             return f"העברה ל-{row['שם יעד']}", -amount
         else:
             return f"התקבל מ-{row['שם מקור']}", amount
 
-    my_actions[['תיאור', 'סכום נטו']] = my_actions.apply(
-        lambda row: pd.Series(clean_row(row)), axis=1
-    )
+    # שימוש ב-apply בצורה בטוחה יותר למניעת שגיאות
+    if not my_actions.empty:
+        results = my_actions.apply(lambda row: clean_row(row), axis=1)
+        # פיצול התוצאות לעמודות
+        my_actions['תיאור'] = [res[0] for res in results]
+        my_actions['סכום נטו'] = [res[1] for res in results]
+        
     return my_actions
 
-# --- האפליקציה ---
+# --- התחלת האפליקציה ---
 configure_genai()
 
 if "messages" not in st.session_state:
@@ -107,7 +113,7 @@ if 'is_admin' not in st.session_state:
 if not st.session_state.authenticated:
     c1, c2, c3 = st.columns([1,2,1])
     with c2:
-        st.title("🤖 כניסה למערכת")
+        st.title("🔐 כניסה למערכת")
         with st.form("login"):
             uid = st.text_input("מספר משתמש")
             pwd = st.text_input("סיסמה", type="password")
@@ -115,64 +121,86 @@ if not st.session_state.authenticated:
                 try:
                     df_users, _, admin_ids = get_all_data()
                     
-                    df_users['מספר משתמש'] = df_users['מספר משתמש'].astype(str)
-                    df_users['סיסמה'] = df_users['סיסמה'].astype(str)
+                    # ניקוי רווחים והמרה לטקסט
+                    df_users['מספר משתמש'] = df_users['מספר משתמש'].astype(str).str.strip()
+                    df_users['סיסמה'] = df_users['סיסמה'].astype(str).str.strip()
+                    uid_clean = str(uid).strip()
+                    pwd_clean = str(pwd).strip()
                     
-                    user = df_users[(df_users['מספר משתמש'] == str(uid)) & (df_users['סיסמה'] == str(pwd))]
+                    user = df_users[(df_users['מספר משתמש'] == uid_clean) & (df_users['סיסמה'] == pwd_clean)]
                     
                     if not user.empty:
                         st.session_state.authenticated = True
                         st.session_state.user = user.iloc[0].to_dict()
                         # בדיקת מנהל
-                        st.session_state.is_admin = str(uid) in [str(x) for x in admin_ids]
+                        st.session_state.is_admin = uid_clean in [str(x).strip() for x in admin_ids]
                         st.rerun()
                     else:
                         st.error("פרטים שגויים")
                 except Exception as e:
                     st.error(f"שגיאה בהתחברות: {e}")
 
-# --- מסך פנימי ---
+# --- מסך ראשי ---
 else:
     u = st.session_state.user
     is_admin = st.session_state.is_admin
     
+    # טעינה מחדש כדי לקבל נתונים עדכניים
     df_users, df_actions, _ = get_all_data()
     
     st.sidebar.title(f"שלום, {u['שם משתמש']}")
-    role = "מנהל" if is_admin else "משתמש"
-    st.sidebar.caption(f"מחובר כ: {role}")
+    role = "מנהל מערכת" if is_admin else "משתמש רגיל"
+    st.sidebar.info(f"מחובר כ: {role}")
     
-    if st.sidebar.button("יציאה"):
+    if st.sidebar.button("יציאה", type="primary"):
         st.session_state.authenticated = False
         st.rerun()
 
+    # חלוקת מסך
     col_dash, col_chat = st.columns([1, 1.5])
 
+    # צד ימין - נתונים
     with col_dash:
-        st.subheader("נתונים")
-        st.metric("יתרה", f"₪{u['יתרה']}")
+        st.subheader("📊 תמונת מצב")
+        
+        # עדכון יתרה מהטבלה החדשה (ולא מהזיכרון הישן)
+        current_balance = df_users[df_users['מספר משתמש'].astype(str) == str(u['מספר משתמש'])]['יתרה'].iloc[0]
+        st.metric("יתרה נוכחית", f"₪{current_balance:,.2f}")
         
         st.divider()
+        
         if is_admin:
-            st.info("מצב מנהל: רואה את כל הפעולות")
-            st.dataframe(df_actions.tail(10).iloc[::-1], hide_index=True)
+            st.success("מצב מנהל פעיל")
+            st.write("פעולות אחרונות בכל המערכת:")
+            st.dataframe(df_actions.tail(10).iloc[::-1], hide_index=True, use_container_width=True)
         else:
-            st.write("פעולות אחרונות:")
+            st.write("הפעולות האחרונות שלי:")
             my_data = process_data_for_display(df_actions, u['מספר משתמש'])
+            
             if not my_data.empty:
                 display = my_data[['תאריך לועזי', 'תיאור', 'סכום נטו']].tail(10).iloc[::-1]
-                st.dataframe(display, hide_index=True)
+                
+                # צביעת סכומים
+                def color_vals(val):
+                    color = 'red' if val < 0 else 'green'
+                    return f'color: {color}; font-weight: bold;'
+                
+                st.dataframe(display.style.map(color_vals, subset=['סכום נטו']).format({'סכום נטו': '₪{:.2f}'}), 
+                             hide_index=True, use_container_width=True)
             else:
-                st.write("אין פעולות.")
+                st.info("לא נמצאו פעולות בחשבון זה.")
 
+    # צד שמאל - צ'אט
     with col_chat:
-        st.subheader("💬 צ'אט חכם")
+        st.subheader("💬 עוזר חכם")
 
+        # הצגת הודעות קודמות
         for msg in st.session_state.messages:
             with st.chat_message(msg["role"]):
                 st.write(msg["content"])
 
-        if prompt := st.chat_input("שאל שאלה..."):
+        # קלט חדש
+        if prompt := st.chat_input("שאל אותי שאלה..."):
             st.session_state.messages.append({"role": "user", "content": prompt})
             with st.chat_message("user"):
                 st.write(prompt)
@@ -180,34 +208,36 @@ else:
             with st.chat_message("assistant"):
                 with st.spinner("חושב..."):
                     try:
-                        # הכנת המידע ל-AI
-                        context = ""
+                        # הכנת הנתונים ל-AI
+                        context_str = ""
                         if is_admin:
-                            users_csv = df_users.to_csv(index=False)
-                            actions_csv = df_actions.tail(500).to_csv(index=False)
-                            context = f"משתמשים:\n{users_csv}\nפעולות:\n{actions_csv}"
-                            role_inst = "אתה מנהל על. יש לך גישה להכל."
+                            users_csv = df_users[['מספר משתמש', 'שם משתמש', 'יתרה']].to_csv(index=False)
+                            actions_csv = df_actions.tail(200).to_csv(index=False)
+                            context_str = f"משתמשים:\n{users_csv}\n\nפעולות אחרונות:\n{actions_csv}"
+                            sys_role = "אתה מנהל המערכת. יש לך גישה לכל הנתונים. ענה על שאלות לגבי כל משתמש."
                         else:
                             my_data = process_data_for_display(df_actions, u['מספר משתמש'])
-                            context = my_data.to_csv(index=False)
-                            role_inst = "אתה עוזר למשתמש ספציפי. ענה רק על הנתונים שלו."
+                            context_str = my_data.to_csv(index=False)
+                            sys_role = f"אתה העוזר של {u['שם משתמש']}. ענה רק על הנתונים שלו."
 
-                        prompt_text = f"""
-                        {role_inst}
-                        הנחיות טכניות (System Manual):
+                        full_prompt = f"""
+                        {sys_role}
+                        
+                        המדריך הטכני של המערכת:
                         {SYSTEM_MANUAL}
                         
-                        הנתונים הרלוונטיים:
-                        {context}
+                        הנתונים לניתוח:
+                        {context_str}
                         
                         שאלה: {prompt}
                         """
                         
                         model = genai.GenerativeModel('gemini-1.5-flash')
-                        response = model.generate_content(prompt_text)
+                        response = model.generate_content(full_prompt)
+                        
                         st.write(response.text)
                         st.session_state.messages.append({"role": "assistant", "content": response.text})
                         
                     except Exception as e:
-                        st.error("שגיאה ב-AI")
-                        print(e)
+                        st.error("שגיאה בתקשורת עם ה-AI")
+                        st.error(e)
