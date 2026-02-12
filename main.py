@@ -86,3 +86,5 @@ else:
     if st.button("יציאה"):
         st.session_state.authenticated = False
         st.rerun()
+
+# fix
