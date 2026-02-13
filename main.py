@@ -5,6 +5,7 @@ from google.oauth2.service_account import Credentials
 import google.generativeai as genai
 import os
 
+# --- הגדרת הדף ---
 st.set_page_config(page_title="שיעבודא פון", layout="wide")
 st.markdown("""
 <style>
@@ -14,47 +15,71 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- משתנים ---
-SPREADSHEET_ID = '1PB-FJsvBmCy8hwA_S1S5FLY_QU9P2VstDAJMMdtufHM'
+# --- המוח של המערכת ---
 SYSTEM_MANUAL = """
-אתה הנציג הדיגיטלי של שיעבודא פון.
+אתה "הנציג הדיגיטלי של שיעבודא פון". תפקידך לשמש כמנתח נתונים וכמרכז מידע עבור משתמשי המערכת.
+השפה שלך: מכובדת, אדיבה ונימוסית.
+חוקים:
+1. הסתמכות על נתונים בזמן אמת בלבד.
+2. משתמש רגיל רואה רק את שלו, מנהל רואה הכל.
+3. לוגיקת IVR: 1-העברות, 2-פעולות, 3-צינתוקים, 4-סיסמה, 5-אלפון, 6-יתרה.
 """
+
+# --- משתנים גלובליים ---
+SPREADSHEET_ID = '1PB-FJsvBmCy8hwA_S1S5FLY_QU9P2VstDAJMMdtufHM'
 
 # --- חיבורים ---
 @st.cache_resource
 def get_client():
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-    
-    # בדיקת קבצים - שלב הדיבוג
     secret_dir = "/etc/secrets"
-    expected_file = "service_account.json"
-    full_path = os.path.join(secret_dir, expected_file)
     
-    # אם הקובץ לא נמצא, נבדוק מה כן נמצא שם
-    if not os.path.exists(full_path):
-        st.error("⚠️ הקובץ לא נמצא בנתיב המצופה!")
-        try:
-            files = os.listdir(secret_dir)
-            st.warning(f"הקבצים שכן קיימים בתיקייה {secret_dir}: {files}")
-            
-            # ניסיון תיקון אוטומטי - אם יש קובץ JSON אחר, נשתמש בו
-            json_files = [f for f in files if f.endswith('.json')]
-            if json_files:
-                full_path = os.path.join(secret_dir, json_files[0])
-                st.success(f"נמצא קובץ חלופי: {json_files[0]} - מנסה להתחבר איתו...")
-            else:
-                st.stop()
-        except Exception as e:
-            st.error(f"לא ניתן לקרוא את התיקייה: {e}")
-            st.stop()
+    # רשימת המפתחות שאנחנו צריכים כדי לבנות את ההרשאה
+    required_keys = [
+        "type", "project_id", "private_key_id", "private_key", 
+        "client_email", "client_id", "auth_uri", "token_uri", 
+        "auth_provider_x509_cert_url", "client_x509_cert_url"
+    ]
+    
+    creds_dict = {}
+    
+    # איסוף הנתונים מהקבצים הנפרדים
+    for key in required_keys:
+        path = os.path.join(secret_dir, key)
+        if os.path.exists(path):
+            with open(path, "r") as f:
+                # קריאת התוכן וניקוי רווחים מיותרים
+                creds_dict[key] = f.read().strip()
+                
+                # תיקון מיוחד למפתח הפרטי - המרת ירידות שורה טקסטואליות לאמיתיות
+                if key == "private_key":
+                     creds_dict[key] = creds_dict[key].replace("\\n", "\n").replace('"', '')
 
-    creds = Credentials.from_service_account_file(full_path, scopes=scopes)
-    return gspread.authorize(creds)
+    # בדיקה שיש לנו מספיק נתונים
+    if "private_key" in creds_dict and "client_email" in creds_dict:
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+        return gspread.authorize(creds)
+    else:
+        # ניסיון אחרון - אולי זה בכל זאת בקובץ JSON אחד?
+        json_path = os.path.join(secret_dir, "service_account.json")
+        if os.path.exists(json_path):
+            creds = Credentials.from_service_account_file(json_path, scopes=scopes)
+            return gspread.authorize(creds)
+            
+        st.error("לא הצלחתי להרכיב את פרטי ההתחברות מהקבצים בשרת.")
+        st.stop()
 
 @st.cache_resource
 def configure_genai():
+    api_key_path = "/etc/secrets/api_key"
     try:
-        if "gemini_api_key" in st.secrets:
+        # קודם ננסה לקרוא מהקובץ
+        if os.path.exists(api_key_path):
+            with open(api_key_path, "r") as f:
+                key = f.read().strip().replace('"', '')
+                genai.configure(api_key=key)
+        # אם לא, ננסה דרך הסודות הרגילים
+        elif "gemini_api_key" in st.secrets:
             if "api_key" in st.secrets["gemini_api_key"]:
                 genai.configure(api_key=st.secrets["gemini_api_key"]["api_key"])
             else:
@@ -66,10 +91,13 @@ def configure_genai():
 def get_all_data():
     client = get_client()
     sh = client.open_by_key(SPREADSHEET_ID)
+    
     ws_users = sh.worksheet("משתמשים")
     df_users = pd.DataFrame(ws_users.get_all_records())
+    
     ws_actions = sh.worksheet("פעולות")
     df_actions = pd.DataFrame(ws_actions.get_all_records())
+    
     try:
         ws_admins = sh.worksheet("מנהלים")
         df_admins = pd.DataFrame(ws_admins.get_all_records())
@@ -77,6 +105,7 @@ def get_all_data():
     except:
         admin_ids = []
         df_admins = pd.DataFrame()
+        
     return df_users, df_actions, df_admins, admin_ids
 
 def process_data_for_display(df_actions, user_id):
@@ -106,10 +135,11 @@ configure_genai()
 if "messages" not in st.session_state: st.session_state.messages = []
 if 'authenticated' not in st.session_state: st.session_state.authenticated = False
 
+# מסך כניסה
 if not st.session_state.authenticated:
     c1, c2, c3 = st.columns([1,2,1])
     with c2:
-        st.title("🤖 כניסה")
+        st.title("🤖 כניסה למערכת")
         with st.form("login"):
             uid = st.text_input("מספר משתמש")
             pwd = st.text_input("סיסמה", type="password")
@@ -118,8 +148,10 @@ if not st.session_state.authenticated:
                     df_users, _, _, admin_ids = get_all_data()
                     uid_clean = str(uid).strip()
                     pwd_clean = str(pwd).strip()
+                    
                     df_users['מספר משתמש'] = df_users['מספר משתמש'].astype(str).str.strip()
                     df_users['סיסמה'] = df_users['סיסמה'].astype(str).str.strip()
+                    
                     user = df_users[(df_users['מספר משתמש'] == uid_clean) & (df_users['סיסמה'] == pwd_clean)]
                     if not user.empty:
                         st.session_state.authenticated = True
@@ -129,30 +161,60 @@ if not st.session_state.authenticated:
                     else:
                         st.error("פרטים שגויים")
                 except Exception as e:
-                    st.error(f"שגיאה: {e}")
+                    st.error(f"שגיאה בהתחברות: {e}")
 
+# מסך ראשי
 else:
     u = st.session_state.user
     is_admin = st.session_state.is_admin
     df_users, df_actions, df_admins, _ = get_all_data()
+    
     st.sidebar.title(f"שלום, {u['שם משתמש']}")
     if st.sidebar.button("יציאה"):
         st.session_state.authenticated = False
         st.rerun()
+
     col_dash, col_chat = st.columns([1, 1.5])
+
     with col_dash:
-        st.metric("יתרה", f"₪{df_users[df_users['מספר משתמש'].astype(str) == str(u['מספר משתמש'])]['יתרה'].iloc[0]:,.2f}")
-        if is_admin: st.dataframe(df_actions.tail(10), hide_index=True)
-        else: st.dataframe(process_data_for_display(df_actions, u['מספר משתמש']).tail(8), hide_index=True)
+        st.subheader("📊 מצב חשבון")
+        curr_row = df_users[df_users['מספר משתמש'].astype(str) == str(u['מספר משתמש'])]
+        if not curr_row.empty:
+            st.metric("יתרה נוכחית", f"₪{curr_row['יתרה'].iloc[0]:,.2f}")
+        
+        st.divider()
+        if is_admin:
+            st.dataframe(df_actions.tail(10).iloc[::-1], hide_index=True)
+        else:
+            my_data = process_data_for_display(df_actions, u['מספר משתמש'])
+            if not my_data.empty:
+                display = my_data[['תאריך לועזי', 'תיאור', 'סכום נטו']].tail(8).iloc[::-1]
+                st.dataframe(display, hide_index=True)
+
     with col_chat:
+        st.subheader("💬 צ'אט")
         for msg in st.session_state.messages:
             with st.chat_message(msg["role"]): st.write(msg["content"])
+            
         if prompt := st.chat_input("שאל אותי..."):
             st.session_state.messages.append({"role": "user", "content": prompt})
             with st.chat_message("user"): st.write(prompt)
+            
             with st.chat_message("assistant"):
                 with st.spinner("חושב..."):
-                    context = df_users.to_csv() if is_admin else process_data_for_display(df_actions, u['מספר משתמש']).to_csv()
-                    res = genai.GenerativeModel('gemini-1.5-flash').generate_content(f"{SYSTEM_MANUAL}\n{context}\n{prompt}")
-                    st.write(res.text)
-                    st.session_state.messages.append({"role": "assistant", "content": res.text})
+                    try:
+                        context = ""
+                        if is_admin:
+                            context = f"משתמשים:\n{df_users.to_csv()}\nפעולות:\n{df_actions.tail(100).to_csv()}"
+                        else:
+                            my_act = process_data_for_display(df_actions, u['מספר משתמש'])
+                            context = f"פרטים:\n{curr_row.to_csv()}\nפעולות:\n{my_act.to_csv()}"
+                        
+                        full_prompt = f"{SYSTEM_MANUAL}\n{context}\nשאלה: {prompt}"
+                        model = genai.GenerativeModel('gemini-1.5-flash')
+                        res = model.generate_content(full_prompt)
+                        st.write(res.text)
+                        st.session_state.messages.append({"role": "assistant", "content": res.text})
+                    except Exception as e:
+                        st.error("שגיאה ב-AI")
+                        print(e)
