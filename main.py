@@ -3,6 +3,7 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 import google.generativeai as genai
+import re
 
 # --- הגדרת הדף ---
 st.set_page_config(page_title="שיעבודא פון", layout="wide")
@@ -70,15 +71,16 @@ SPREADSHEET_ID = '1PB-FJsvBmCy8hwA_S1S5FLY_QU9P2VstDAJMMdtufHM'
 @st.cache_resource
 def get_client():
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-    
-    # טעינת הסודות
     creds_dict = dict(st.secrets["gcp_service_account"])
     
-    # === התיקון הקריטי: סידור המפתח ===
+    # === מנגנון התיקון האוטומטי ===
     if "private_key" in creds_dict:
-        # מחליף רווחים וסימני שורה משובשים בסימן שורה תקין
         key = creds_dict["private_key"]
-        creds_dict["private_key"] = key.replace("\\n", "\n")
+        # מסיר כותרות כדי לנקות, מנקה רווחים, ואז בונה מחדש בצורה נקייה
+        clean_key = key.replace("-----BEGIN PRIVATE KEY-----", "").replace("-----END PRIVATE KEY-----", "")
+        clean_key = re.sub(r'\s+', '', clean_key) # מסיר כל רווח או אנטר מיותר
+        # בונה מחדש את המפתח בצורה התקנית ביותר
+        creds_dict["private_key"] = f"-----BEGIN PRIVATE KEY-----\n{clean_key}\n-----END PRIVATE KEY-----"
     
     creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     return gspread.authorize(creds)
@@ -86,10 +88,13 @@ def get_client():
 @st.cache_resource
 def configure_genai():
     try:
-        genai.configure(api_key=st.secrets["gemini_api_key"]["api_key"])
+        # תמיכה בשני סוגי המבנים בקובץ הסודות
+        if "api_key" in st.secrets["gemini_api_key"]:
+            genai.configure(api_key=st.secrets["gemini_api_key"]["api_key"])
+        else:
+            genai.configure(api_key=st.secrets["gemini_api_key"])
     except:
-        # תמיכה גם במקרה שהמפתח לא בתוך מבנה פנימי
-        genai.configure(api_key=st.secrets["gemini_api_key"])
+        pass
 
 @st.cache_data(ttl=60)
 def get_all_data():
@@ -156,7 +161,7 @@ if not st.session_state.authenticated:
     c1, c2, c3 = st.columns([1,2,1])
     with c2:
         st.title("🤖 שיעבודא פון")
-        st.subheader("מערכת ניהול חכמה")
+        st.caption("מערכת ניהול חכמה")
         with st.form("login"):
             uid = st.text_input("מספר משתמש")
             pwd = st.text_input("סיסמה", type="password")
