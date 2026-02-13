@@ -3,12 +3,10 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 import google.generativeai as genai
-import re
+import os
 
 # --- הגדרת הדף ---
 st.set_page_config(page_title="שיעבודא פון", layout="wide")
-
-# --- עיצוב (RTL) ---
 st.markdown("""
 <style>
     .stApp { direction: rtl; text-align: right; }
@@ -34,34 +32,17 @@ SYSTEM_MANUAL = """
 - מנהל: רשאי לקבל מידע על כל משתמש, לראות את יתרת ה"קבוצה" (בגיליון קבוצות), ולזהות "נפילות כספים" (כאשר יתרת הקבוצה נמוכה מ-5000).
 
 ### לוגיקת המערכת הטלפונית (IVR) - הנחיות למשתמש
-- 1: שלוחת העברות. (חשוב להבהיר: הכסף יורד מהחשבון מיד עם אישור הסכום, עוד לפני בחירת הנמען).
-- 2: היסטוריית פעולות (1 - פירוט מלא, 2 - פירוט קצר).
-- 3: רישום לשירות צינתוקים (הודעות על כניסת כספים).
-- 4: שינוי סיסמה אישית.
-- 5: אלפון (1 - חיפוש לפי שם, 2 - חיפוש לפי מספר).
-- 6: בדיקת יתרה עדכנית.
-- 9: הודעות אישיות (1 - שמיעה ומחיקה ב-0, 2 - הקלטת הודעה לנמען ספציפי).
+- 1: שלוחת העברות.
+- 2: היסטוריית פעולות.
+- 3: רישום לצינתוקים.
+- 4: שינוי סיסמה.
+- 5: אלפון.
+- 6: יתרה.
+- 9: הודעות אישיות.
 
-### לוגיקת ה-500 (חצאי שקלים)
-הסבר למשתמשים כיצד להקיש סכום הכולל חצי שקל: יש להקיש 5 ואז את סכום השקלים (בפורמט של שתי ספרות).
-דוגמאות:
-- עבור 5.5 ש"ח: יש להקיש 505.
-- עבור 10.5 ש"ח: יש להקיש 510.
-- עבור 55 ש"ח (עגול): יש להקיש 55.
-
-### מקלדת T9 לחיפוש באלפון (שלוחה 5)
-הדרכת המשתמש לחיפוש שם (יש להפריד בין אות לאות באמצעות כוכבית *):
-3: א ב ג | 2: ד ה ו | 6: ז ח ט | 5: י כ ל | 4: מ נ ס | 9: ס ע פ | 8: צ ק | 7: ר ש ת.
-דוגמה לחיפוש "דוד": 2 * 222 * 2.
-
-### טיפול בתקלות (Troubleshooting)
-- "נפילת כספים": במידה והשיחה התנתקה לאחר הורדת הכסף אך לפני בחירת הנמען, הסבר למשתמש בנימוס כי המנהל יבצע זיכוי ידני במערכת לאחר בדיקה.
-- חסימת מינוס: מסגרת המינוס המקסימלית היא 200-. במידה והחשבון חסום (עקב אי החלפת סיסמה בעבר או בקשה אישית), יש להפנות את המשתמש לנציג בשיעורו.
-- מחיקת הודעות: ניתן להקיש 0 במהלך שמיעת הודעה אישית כדי למחוק אותה לצמיתות מהמערכת.
-
-### כנות המערכת
-במידה ונשאלת שאלה שאין עליה תשובה בנתונים או בנהלים, ענה במכובדות: 
-"ידידי, כרגע אין בידי מידע מדויק בנושא זה. העברתי את פנייתך לבדיקת המנהל, והוא יחזור אליך בהקדם."
+### טיפול בתקלות
+- נפילת כספים: פנה למנהל לזיכוי ידני.
+- חסימת מינוס: עד 200 ש"ח.
 """
 
 # --- משתנים גלובליים ---
@@ -71,28 +52,27 @@ SPREADSHEET_ID = '1PB-FJsvBmCy8hwA_S1S5FLY_QU9P2VstDAJMMdtufHM'
 @st.cache_resource
 def get_client():
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-    creds_dict = dict(st.secrets["gcp_service_account"])
     
-    # === מנגנון התיקון האוטומטי ===
-    if "private_key" in creds_dict:
-        key = creds_dict["private_key"]
-        # מסיר כותרות כדי לנקות, מנקה רווחים, ואז בונה מחדש בצורה נקייה
-        clean_key = key.replace("-----BEGIN PRIVATE KEY-----", "").replace("-----END PRIVATE KEY-----", "")
-        clean_key = re.sub(r'\s+', '', clean_key) # מסיר כל רווח או אנטר מיותר
-        # בונה מחדש את המפתח בצורה התקנית ביותר
-        creds_dict["private_key"] = f"-----BEGIN PRIVATE KEY-----\n{clean_key}\n-----END PRIVATE KEY-----"
+    # Render שומר את הקובץ שיצרנו בנתיב הזה באופן אוטומטי
+    secret_path = "/etc/secrets/service_account.json"
     
-    creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+    if os.path.exists(secret_path):
+        creds = Credentials.from_service_account_file(secret_path, scopes=scopes)
+    else:
+        st.error("קובץ ההרשאות לא נמצא בשרת!")
+        st.stop()
+        
     return gspread.authorize(creds)
 
 @st.cache_resource
 def configure_genai():
     try:
-        # תמיכה בשני סוגי המבנים בקובץ הסודות
-        if "api_key" in st.secrets["gemini_api_key"]:
-            genai.configure(api_key=st.secrets["gemini_api_key"]["api_key"])
-        else:
-            genai.configure(api_key=st.secrets["gemini_api_key"])
+        # ניסיון לקרוא מהקובץ הסודי שנשאר
+        if "gemini_api_key" in st.secrets:
+            if "api_key" in st.secrets["gemini_api_key"]:
+                genai.configure(api_key=st.secrets["gemini_api_key"]["api_key"])
+            else:
+                genai.configure(api_key=st.secrets["gemini_api_key"])
     except:
         pass
 
@@ -117,150 +97,112 @@ def get_all_data():
         
     return df_users, df_actions, df_admins, admin_ids
 
-# --- עיבוד נתונים לתצוגה ---
 def process_data_for_display(df_actions, user_id):
     df_actions['מספר משתמש מקור'] = df_actions['מספר משתמש מקור'].astype(str)
     df_actions['מספר משתמש יעד'] = df_actions['מספר משתמש יעד'].astype(str)
     user_id = str(user_id)
-    
     mask = (df_actions['מספר משתמש מקור'] == user_id) | (df_actions['מספר משתמש יעד'] == user_id)
     my_actions = df_actions[mask].copy()
-    
-    if my_actions.empty:
-        return pd.DataFrame()
+    if my_actions.empty: return pd.DataFrame()
 
     def clean_row(row):
         is_sender = str(row['מספר משתמש מקור']) == user_id
-        try:
-            amount = float(row['סכום'])
-        except:
-            amount = 0
-            
-        if is_sender:
-            return f"העברה ל-{row['שם יעד']}", -amount
-        else:
-            return f"התקבל מ-{row['שם מקור']}", amount
+        try: amount = float(row['סכום'])
+        except: amount = 0
+        if is_sender: return f"העברה ל-{row['שם יעד']}", -amount
+        else: return f"התקבל מ-{row['שם מקור']}", amount
 
     if not my_actions.empty:
         results = my_actions.apply(lambda row: clean_row(row), axis=1)
         my_actions['תיאור'] = [res[0] for res in results]
         my_actions['סכום נטו'] = [res[1] for res in results]
-        
     return my_actions
 
 # --- האפליקציה ---
 configure_genai()
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-if 'authenticated' not in st.session_state:
-    st.session_state.authenticated = False
+if "messages" not in st.session_state: st.session_state.messages = []
+if 'authenticated' not in st.session_state: st.session_state.authenticated = False
 
-# --- מסך כניסה ---
+# מסך כניסה
 if not st.session_state.authenticated:
     c1, c2, c3 = st.columns([1,2,1])
     with c2:
         st.title("🤖 שיעבודא פון")
-        st.caption("מערכת ניהול חכמה")
         with st.form("login"):
             uid = st.text_input("מספר משתמש")
             pwd = st.text_input("סיסמה", type="password")
             if st.form_submit_button("התחבר", use_container_width=True):
                 try:
                     df_users, _, _, admin_ids = get_all_data()
-                    
-                    df_users['מספר משתמש'] = df_users['מספר משתמש'].astype(str).str.strip()
-                    df_users['סיסמה'] = df_users['סיסמה'].astype(str).str.strip()
                     uid_clean = str(uid).strip()
                     pwd_clean = str(pwd).strip()
+                    # המרה ל-str ליתר ביטחון
+                    df_users['מספר משתמש'] = df_users['מספר משתמש'].astype(str).str.strip()
+                    df_users['סיסמה'] = df_users['סיסמה'].astype(str).str.strip()
                     
                     user = df_users[(df_users['מספר משתמש'] == uid_clean) & (df_users['סיסמה'] == pwd_clean)]
-                    
                     if not user.empty:
                         st.session_state.authenticated = True
                         st.session_state.user = user.iloc[0].to_dict()
                         st.session_state.is_admin = uid_clean in [str(x).strip() for x in admin_ids]
                         st.rerun()
                     else:
-                        st.error("פרטים שגויים או שגיאת חיבור")
+                        st.error("פרטים שגויים")
                 except Exception as e:
-                    st.error(f"שגיאה בהתחברות: {e}")
+                    st.error(f"שגיאה: {e}")
 
-# --- מסך ראשי ---
+# מסך ראשי
 else:
     u = st.session_state.user
     is_admin = st.session_state.is_admin
-    
-    # טעינת נתונים
     df_users, df_actions, df_admins, _ = get_all_data()
     
     st.sidebar.title(f"שלום, {u['שם משתמש']}")
-    role = "מנהל מערכת" if is_admin else "משתמש רגיל"
-    st.sidebar.info(f"מחובר כ: {role}")
-    
-    if st.sidebar.button("יציאה", type="primary"):
+    if st.sidebar.button("יציאה"):
         st.session_state.authenticated = False
         st.rerun()
 
     col_dash, col_chat = st.columns([1, 1.5])
 
     with col_dash:
-        st.subheader("📊 מצב חשבון")
-        curr_user_row = df_users[df_users['מספר משתמש'].astype(str) == str(u['מספר משתמש'])]
-        if not curr_user_row.empty:
-            current_balance = curr_user_row['יתרה'].iloc[0]
-            st.metric("יתרה נוכחית", f"₪{current_balance:,.2f}")
+        st.subheader("📊 יתרה")
+        curr_row = df_users[df_users['מספר משתמש'].astype(str) == str(u['מספר משתמש'])]
+        if not curr_row.empty:
+            st.metric("נוכחי", f"₪{curr_row['יתרה'].iloc[0]:,.2f}")
         
         st.divider()
-        
         if is_admin:
-            st.success("מצב מנהל - גישה מלאה")
-            st.write("פעולות אחרונות במערכת:")
-            st.dataframe(df_actions.tail(10).iloc[::-1], hide_index=True, use_container_width=True)
+            st.dataframe(df_actions.tail(10).iloc[::-1], hide_index=True)
         else:
-            st.write("פעולות אחרונות שלי:")
             my_data = process_data_for_display(df_actions, u['מספר משתמש'])
             if not my_data.empty:
                 display = my_data[['תאריך לועזי', 'תיאור', 'סכום נטו']].tail(8).iloc[::-1]
-                def color_vals(val):
-                    return f'color: {"red" if val < 0 else "green"}; font-weight: bold;'
-                st.dataframe(display.style.map(color_vals, subset=['סכום נטו']).format({'סכום נטו': '₪{:.2f}'}), 
-                             hide_index=True, use_container_width=True)
-            else:
-                st.info("אין פעולות להצגה")
+                st.dataframe(display, hide_index=True)
 
     with col_chat:
-        st.subheader("💬 הנציג הדיגיטלי")
+        st.subheader("💬 צ'אט")
         for msg in st.session_state.messages:
-            with st.chat_message(msg["role"]):
-                st.write(msg["content"])
-
-        if prompt := st.chat_input("איך אפשר לעזור?"):
+            with st.chat_message(msg["role"]): st.write(msg["content"])
+            
+        if prompt := st.chat_input("שאל אותי..."):
             st.session_state.messages.append({"role": "user", "content": prompt})
-            with st.chat_message("user"):
-                st.write(prompt)
-
+            with st.chat_message("user"): st.write(prompt)
+            
             with st.chat_message("assistant"):
-                with st.spinner("בודק..."):
+                with st.spinner("חושב..."):
                     try:
-                        context_str = ""
+                        context = ""
                         if is_admin:
-                            users_csv = df_users.to_csv(index=False)
-                            admins_csv = df_admins.to_csv(index=False)
-                            actions_csv = df_actions.tail(500).to_csv(index=False)
-                            context_str = f"משתמשים:\n{users_csv}\nמנהלים:\n{admins_csv}\nפעולות:\n{actions_csv}\n(אתה מנהל)"
+                            context = f"משתמשים:\n{df_users.to_csv()}\nפעולות:\n{df_actions.tail(100).to_csv()}"
                         else:
-                            my_user_row = curr_user_row.to_csv(index=False)
-                            my_actions_raw = df_actions[(df_actions['מספר משתמש מקור'].astype(str) == str(u['מספר משתמש'])) | 
-                                                        (df_actions['מספר משתמש יעד'].astype(str) == str(u['מספר משתמש']))]
-                            my_actions_csv = my_actions_raw.tail(50).to_csv(index=False)
-                            context_str = f"פרטי משתמש:\n{my_user_row}\nפעולות:\n{my_actions_csv}\n(משתמש רגיל)"
-
-                        full_prompt = f"{SYSTEM_MANUAL}\n\nנתונים:\n{context_str}\n\nשאלה: {prompt}"
+                            my_act = process_data_for_display(df_actions, u['מספר משתמש'])
+                            context = f"פרטים:\n{curr_row.to_csv()}\nפעולות:\n{my_act.to_csv()}"
+                        
+                        full_prompt = f"{SYSTEM_MANUAL}\n{context}\nשאלה: {prompt}"
                         model = genai.GenerativeModel('gemini-1.5-flash')
-                        response = model.generate_content(full_prompt)
-                        st.write(response.text)
-                        st.session_state.messages.append({"role": "assistant", "content": response.text})
+                        res = model.generate_content(full_prompt)
+                        st.write(res.text)
+                        st.session_state.messages.append({"role": "assistant", "content": res.text})
                     except Exception as e:
-                        st.error("תקלה זמנית ב-AI")
-                        print(e)
+                        st.error("שגיאה ב-AI")
