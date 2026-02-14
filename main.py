@@ -18,22 +18,16 @@ st.markdown("""
 # --- משתנים ---
 SPREADSHEET_ID = '1PB-FJsvBmCy8hwA_S1S5FLY_QU9P2VstDAJMMdtufHM'
 SYSTEM_MANUAL = """
-אתה הנציג הדיגיטלי של שיעבודא פון.
-תשובות קצרות ולעניין.
+אתה הנציג הדיגיטלי של שיעבודא פון. תפקידך לשמש כמנתח נתונים.
+תשובות קצרות, מדויקות ואדיבות.
 """
 
-# --- חיבור לגוגל שיטס ---
+# --- חיבורים לגוגל שיטס ---
 @st.cache_resource
 def get_client():
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     secret_dir = "/etc/secrets"
-    
-    # רשימת המפתחות שאנחנו צריכים
-    required_keys = [
-        "type", "project_id", "private_key_id", "private_key", 
-        "client_email", "client_id", "auth_uri", "token_uri", 
-        "auth_provider_x509_cert_url", "client_x509_cert_url"
-    ]
+    required_keys = ["type", "project_id", "private_key_id", "private_key", "client_email", "client_id", "auth_uri", "token_uri", "auth_provider_x509_cert_url", "client_x509_cert_url"]
     
     creds_dict = {}
     for key in required_keys:
@@ -45,32 +39,26 @@ def get_client():
                      creds_dict[key] = creds_dict[key].replace("\\n", "\n").replace('"', '')
 
     if "private_key" in creds_dict:
-        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-        return gspread.authorize(creds)
-    else:
-        # Fallback לקובץ JSON
-        json_path = os.path.join(secret_dir, "service_account.json")
-        if os.path.exists(json_path):
-            creds = Credentials.from_service_account_file(json_path, scopes=scopes)
-            return gspread.authorize(creds)
+        return gspread.authorize(Credentials.from_service_account_info(creds_dict, scopes=scopes))
+    
+    json_path = os.path.join(secret_dir, "service_account.json")
+    if os.path.exists(json_path):
+        return gspread.authorize(Credentials.from_service_account_file(json_path, scopes=scopes))
     
     st.error("תקלה בחיבור לשיטס")
     st.stop()
 
-# --- חיבור ל-AI ---
 @st.cache_resource
 def configure_genai():
     api_key = None
     try:
         if "gemini_api_key" in st.secrets:
             val = st.secrets["gemini_api_key"]
-            if isinstance(val, dict): api_key = val.get("api_key")
-            else: api_key = val
+            api_key = val.get("api_key") if isinstance(val, dict) else val
     except: pass
         
     if not api_key:
-        possible_paths = ["/etc/secrets/api_key", "/etc/secrets/gemini_api_key"]
-        for path in possible_paths:
+        for path in ["/etc/secrets/api_key", "/etc/secrets/gemini_api_key"]:
             if os.path.exists(path):
                 with open(path, "r") as f:
                     api_key = f.read().strip().replace('"', '').replace("'", "")
@@ -85,14 +73,10 @@ def configure_genai():
 def get_all_data():
     client = get_client()
     sh = client.open_by_key(SPREADSHEET_ID)
-    ws_users = sh.worksheet("משתמשים")
-    df_users = pd.DataFrame(ws_users.get_all_records())
-    ws_actions = sh.worksheet("פעולות")
-    df_actions = pd.DataFrame(ws_actions.get_all_records())
+    df_users = pd.DataFrame(sh.worksheet("משתמשים").get_all_records())
+    df_actions = pd.DataFrame(sh.worksheet("פעולות").get_all_records())
     try:
-        ws_admins = sh.worksheet("מנהלים")
-        df_admins = pd.DataFrame(ws_admins.get_all_records())
-        admin_ids = df_admins[df_admins.columns[0]].astype(str).tolist()
+        admin_ids = pd.DataFrame(sh.worksheet("מנהלים").get_all_records()).iloc[:, 0].astype(str).tolist()
     except:
         admin_ids = []
     return df_users, df_actions, admin_ids
@@ -107,15 +91,13 @@ def process_data_for_display(df_actions, user_id):
 
     def clean_row(row):
         is_sender = str(row['מספר משתמש מקור']) == user_id
-        try: amount = float(row['סכום'])
-        except: amount = 0
+        amount = float(row.get('סכום', 0))
         if is_sender: return f"העברה ל-{row['שם יעד']}", -amount
         else: return f"התקבל מ-{row['שם מקור']}", amount
 
-    if not my_actions.empty:
-        results = my_actions.apply(lambda row: clean_row(row), axis=1)
-        my_actions['תיאור'] = [res[0] for res in results]
-        my_actions['סכום נטו'] = [res[1] for res in results]
+    results = my_actions.apply(lambda row: clean_row(row), axis=1)
+    my_actions['תיאור'] = [res[0] for res in results]
+    my_actions['סכום נטו'] = [res[1] for res in results]
     return my_actions
 
 # --- האפליקציה ---
@@ -174,10 +156,22 @@ else:
                 with st.spinner("חושב..."):
                     try:
                         context = df_users.to_csv() if is_admin else process_data_for_display(df_actions, u['מספר משתמש']).to_csv()
-                        # === התיקון: שימוש במודל gemini-pro היציב ===
-                        model = genai.GenerativeModel('gemini-pro')
-                        res = model.generate_content(f"{SYSTEM_MANUAL}\n{context}\n{prompt}")
-                        st.write(res.text)
-                        st.session_state.messages.append({"role": "assistant", "content": res.text})
+                        
+                        # --- המנגנון החדש: סורק את כל המודלים ובוחר את הראשון שעובד ---
+                        valid_model = None
+                        for m in genai.list_models():
+                            if 'generateContent' in m.supported_generation_methods:
+                                valid_model = m.name
+                                # מעדיפים את הגרסה הכי חדשה ומהירה שזמינה כרגע (flash)
+                                if 'flash' in m.name.lower(): 
+                                    break
+                                    
+                        if not valid_model:
+                            st.error("לא נמצאו מודלים פתוחים בחשבון זה.")
+                        else:
+                            model = genai.GenerativeModel(valid_model)
+                            res = model.generate_content(f"{SYSTEM_MANUAL}\n{context}\n{prompt}")
+                            st.write(res.text)
+                            st.session_state.messages.append({"role": "assistant", "content": res.text})
                     except Exception as e:
                         st.error(f"שגיאה: {str(e)}")
