@@ -22,7 +22,7 @@ SYSTEM_MANUAL = """
 תשובות קצרות ולעניין.
 """
 
-# --- חיבור לגוגל שיטס (עובד!) ---
+# --- חיבור לגוגל שיטס ---
 @st.cache_resource
 def get_client():
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
@@ -57,38 +57,29 @@ def get_client():
     st.error("תקלה בחיבור לשיטס")
     st.stop()
 
-# --- חיבור ל-AI (התיקון) ---
+# --- חיבור ל-AI ---
 @st.cache_resource
 def configure_genai():
     api_key = None
-    
-    # ניסיון 1: קריאה מ-st.secrets (הדרך הרגילה)
     try:
         if "gemini_api_key" in st.secrets:
-            if isinstance(st.secrets["gemini_api_key"], dict):
-                api_key = st.secrets["gemini_api_key"].get("api_key")
-            else:
-                api_key = st.secrets["gemini_api_key"]
-    except:
-        pass
+            val = st.secrets["gemini_api_key"]
+            if isinstance(val, dict): api_key = val.get("api_key")
+            else: api_key = val
+    except: pass
         
-    # ניסיון 2: קריאה מהקבצים בשרת (אם Render פירק אותם)
     if not api_key:
         possible_paths = ["/etc/secrets/api_key", "/etc/secrets/gemini_api_key"]
         for path in possible_paths:
             if os.path.exists(path):
                 with open(path, "r") as f:
-                    content = f.read().strip()
-                    # ניקוי מרכאות אם יש
-                    api_key = content.replace('"', '').replace("'", "")
+                    api_key = f.read().strip().replace('"', '').replace("'", "")
                     break
 
-    # הגדרה סופית
     if api_key:
         genai.configure(api_key=api_key)
         return True
-    else:
-        return False
+    return False
 
 @st.cache_data(ttl=60)
 def get_all_data():
@@ -163,9 +154,6 @@ else:
     df_users, df_actions, _ = get_all_data()
     st.sidebar.title(f"שלום, {u['שם משתמש']}")
     
-    if not ai_configured:
-        st.sidebar.error("⚠️ מפתח AI לא נמצא!")
-    
     if st.sidebar.button("יציאה"):
         st.session_state.authenticated = False
         st.rerun()
@@ -186,9 +174,10 @@ else:
                 with st.spinner("חושב..."):
                     try:
                         context = df_users.to_csv() if is_admin else process_data_for_display(df_actions, u['מספר משתמש']).to_csv()
-                        res = genai.GenerativeModel('gemini-1.5-flash').generate_content(f"{SYSTEM_MANUAL}\n{context}\n{prompt}")
+                        # === התיקון: שימוש במודל gemini-pro היציב ===
+                        model = genai.GenerativeModel('gemini-pro')
+                        res = model.generate_content(f"{SYSTEM_MANUAL}\n{context}\n{prompt}")
                         st.write(res.text)
                         st.session_state.messages.append({"role": "assistant", "content": res.text})
                     except Exception as e:
-                        # כאן התיקון החשוב - הדפסת השגיאה המלאה
-                        st.error(f"שגיאה מפורטת: {str(e)}")
+                        st.error(f"שגיאה: {str(e)}")
