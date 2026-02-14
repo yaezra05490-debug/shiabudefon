@@ -18,8 +18,8 @@ st.markdown("""
 # --- משתנים ---
 SPREADSHEET_ID = '1PB-FJsvBmCy8hwA_S1S5FLY_QU9P2VstDAJMMdtufHM'
 SYSTEM_MANUAL = """
-אתה הנציג הדיגיטלי של שיעבודא פון. תפקידך לשמש כמנתח נתונים.
-תשובות קצרות, מדויקות ואדיבות.
+אתה הנציג הדיגיטלי של שיעבודא פון. תפקידך לשמש כמנתח נתונים של המשתמש.
+מותר לך לסכם לו את הפעולות, לחשב הוצאות/הכנסות, ולענות על שאלות בצורה אדיבה.
 """
 
 # --- חיבורים לגוגל שיטס ---
@@ -48,26 +48,29 @@ def get_client():
     st.error("תקלה בחיבור לשיטס")
     st.stop()
 
+# --- שולף את רשימת המפתחות ---
 @st.cache_resource
-def configure_genai():
-    api_key = None
+def get_api_keys():
+    keys = []
     try:
         if "gemini_api_key" in st.secrets:
             val = st.secrets["gemini_api_key"]
-            api_key = val.get("api_key") if isinstance(val, dict) else val
+            if isinstance(val, dict):
+                # תומך במפתח אחד או ברשימה עם פסיקים
+                raw_keys = val.get("api_keys", val.get("api_key", ""))
+                keys = [k.strip() for k in raw_keys.split(",") if k.strip()]
+            else:
+                keys = [k.strip() for k in str(val).split(",") if k.strip()]
     except: pass
         
-    if not api_key:
+    if not keys:
         for path in ["/etc/secrets/api_key", "/etc/secrets/gemini_api_key"]:
             if os.path.exists(path):
                 with open(path, "r") as f:
-                    api_key = f.read().strip().replace('"', '').replace("'", "")
+                    content = f.read().strip().replace('"', '').replace("'", "")
+                    keys = [k.strip() for k in content.split(",") if k.strip()]
                     break
-
-    if api_key:
-        genai.configure(api_key=api_key)
-        return True
-    return False
+    return keys
 
 @st.cache_data(ttl=60)
 def get_all_data():
@@ -91,7 +94,8 @@ def process_data_for_display(df_actions, user_id):
 
     def clean_row(row):
         is_sender = str(row['מספר משתמש מקור']) == user_id
-        amount = float(row.get('סכום', 0))
+        try: amount = float(row.get('סכום', 0))
+        except: amount = 0
         if is_sender: return f"העברה ל-{row['שם יעד']}", -amount
         else: return f"התקבל מ-{row['שם מקור']}", amount
 
@@ -101,7 +105,7 @@ def process_data_for_display(df_actions, user_id):
     return my_actions
 
 # --- האפליקציה ---
-ai_configured = configure_genai()
+api_keys_pool = get_api_keys()
 
 if "messages" not in st.session_state: st.session_state.messages = []
 if 'authenticated' not in st.session_state: st.session_state.authenticated = False
@@ -109,7 +113,7 @@ if 'authenticated' not in st.session_state: st.session_state.authenticated = Fal
 if not st.session_state.authenticated:
     c1, c2, c3 = st.columns([1,2,1])
     with c2:
-        st.title("🤖 כניסה")
+        st.title("🤖 כניסה למערכת")
         with st.form("login"):
             uid = st.text_input("מספר משתמש")
             pwd = st.text_input("סיסמה", type="password")
@@ -134,8 +138,13 @@ else:
     u = st.session_state.user
     is_admin = st.session_state.is_admin
     df_users, df_actions, _ = get_all_data()
-    st.sidebar.title(f"שלום, {u['שם משתמש']}")
     
+    st.sidebar.title(f"שלום, {u['שם משתמש']}")
+    if not api_keys_pool:
+        st.sidebar.error("⚠️ לא הוגדרו מפתחות AI!")
+    else:
+        st.sidebar.caption(f"מפתחות גיבוי פעילים: {len(api_keys_pool)}")
+        
     if st.sidebar.button("יציאה"):
         st.session_state.authenticated = False
         st.rerun()
@@ -147,31 +156,78 @@ else:
         else: st.dataframe(process_data_for_display(df_actions, u['מספר משתמש']).tail(8), hide_index=True)
         
     with col_chat:
+        # הצגת ההיסטוריה כולל הטוקנים
         for msg in st.session_state.messages:
-            with st.chat_message(msg["role"]): st.write(msg["content"])
-        if prompt := st.chat_input("שאל אותי..."):
+            with st.chat_message(msg["role"]): 
+                st.write(msg["content"])
+                if "tokens" in msg:
+                    st.caption(f"🪙 {msg['tokens']}")
+                    
+        if prompt := st.chat_input("שאל אותי (לדוגמה: תסכם לי הוצאות)..."):
             st.session_state.messages.append({"role": "user", "content": prompt})
             with st.chat_message("user"): st.write(prompt)
+            
             with st.chat_message("assistant"):
-                with st.spinner("חושב..."):
-                    try:
-                        context = df_users.to_csv() if is_admin else process_data_for_display(df_actions, u['מספר משתמש']).to_csv()
-                        
-                        # --- המנגנון החדש: סורק את כל המודלים ובוחר את הראשון שעובד ---
-                        valid_model = None
-                        for m in genai.list_models():
-                            if 'generateContent' in m.supported_generation_methods:
-                                valid_model = m.name
-                                # מעדיפים את הגרסה הכי חדשה ומהירה שזמינה כרגע (flash)
-                                if 'flash' in m.name.lower(): 
-                                    break
-                                    
-                        if not valid_model:
-                            st.error("לא נמצאו מודלים פתוחים בחשבון זה.")
-                        else:
+                with st.spinner("חושב... (וסורק את כל הפעולות)"):
+                    
+                    # הכנת המידע - שליחת כללללל הפעולות כמו שביקשת!
+                    if is_admin:
+                        context = f"משתמשים:\n{df_users.to_csv()}\nפעולות:\n{df_actions.to_csv()}"
+                    else:
+                        my_act = process_data_for_display(df_actions, u['מספר משתמש'])
+                        curr_row = df_users[df_users['מספר משתמש'].astype(str) == str(u['מספר משתמש'])]
+                        context = f"פרטים:\n{curr_row.to_csv()}\nפעולות מלאות:\n{my_act.to_csv()}"
+                    
+                    # מנגנון Fallback - מנסה מפתח אחרי מפתח
+                    success = False
+                    last_error = ""
+                    
+                    for key in api_keys_pool:
+                        try:
+                            genai.configure(api_key=key)
+                            
+                            # חיפוש מודל פעיל
+                            valid_model = None
+                            for m in genai.list_models():
+                                if 'generateContent' in m.supported_generation_methods:
+                                    valid_model = m.name
+                                    if 'flash' in m.name.lower(): break
+                            if not valid_model: valid_model = 'gemini-pro'
+                                
+                            # הרצת הבקשה (עם הגבלת אורך תשובה כדי לחסוך)
                             model = genai.GenerativeModel(valid_model)
-                            res = model.generate_content(f"{SYSTEM_MANUAL}\n{context}\n{prompt}")
+                            config = genai.types.GenerationConfig(max_output_tokens=300)
+                            
+                            res = model.generate_content(
+                                f"{SYSTEM_MANUAL}\n{context}\nשאלה: {prompt}",
+                                generation_config=config
+                            )
+                            
+                            # שליפת נתוני טוקנים אם קיימים
+                            tokens_info = ""
+                            try:
+                                usage = res.usage_metadata
+                                tokens_info = f"טוקנים שבוזבזו: {usage.total_token_count}"
+                            except: pass
+                            
+                            # הצגה למשתמש
                             st.write(res.text)
-                            st.session_state.messages.append({"role": "assistant", "content": res.text})
-                    except Exception as e:
-                        st.error(f"שגיאה: {str(e)}")
+                            if tokens_info: st.caption(f"🪙 {tokens_info}")
+                            
+                            # שמירה
+                            st.session_state.messages.append({
+                                "role": "assistant", 
+                                "content": res.text,
+                                "tokens": tokens_info
+                            })
+                            
+                            success = True
+                            break # הכל עבד מעולה! עוצר את הלולאה ולא מנסה מפתחות אחרים
+                            
+                        except Exception as e:
+                            last_error = str(e)
+                            print(f"Key failed: {e}")
+                            continue # עובר למפתח הבא ברשימה
+
+                    if not success:
+                        st.error(f"לא הצלחתי לענות. כל המפתחות נוסו ונכשלו. שגיאה אחרונה: {last_error}")
