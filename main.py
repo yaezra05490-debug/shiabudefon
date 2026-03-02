@@ -398,7 +398,63 @@ def inject_css():
     }
 
     /* ── Divider ── */
-    hr { border-color: #e2e8f0 !important; margin: 16px 0 !important; }
+    hr { border: none !important; border-top: 1.5px solid #e2e8f0 !important; margin: 20px 0 !important; }
+
+    /* ── Radio buttons ── */
+    .stRadio > div {
+        background: white;
+        border-radius: 12px;
+        padding: 4px 8px;
+        box-shadow: 0 1px 6px rgba(0,0,0,0.05);
+        display: inline-flex;
+        gap: 4px;
+    }
+    .stRadio [data-testid="stMarkdownContainer"] p { font-family: 'Heebo', sans-serif !important; font-size: 0.84rem !important; font-weight: 600 !important; }
+
+    /* ── Multiselect tags ── */
+    [data-baseweb="tag"] {
+        background: linear-gradient(135deg,#dbeafe,#bfdbfe) !important;
+        border-radius: 20px !important;
+        border: none !important;
+    }
+    [data-baseweb="tag"] span { color: #1e3a8a !important; font-weight: 600 !important; font-size: 0.8rem !important; }
+
+    /* ── Download buttons ── */
+    [data-testid="stDownloadButton"] > button {
+        border-radius: 10px !important;
+        font-family: 'Heebo', sans-serif !important;
+        font-weight: 600 !important;
+        font-size: 0.84rem !important;
+        background: white !important;
+        border: 1.5px solid #e2e8f0 !important;
+        color: #0f3460 !important;
+        transition: all 0.18s !important;
+    }
+    [data-testid="stDownloadButton"] > button:hover {
+        background: #eff6ff !important;
+        border-color: #93c5fd !important;
+        transform: translateY(-1px) !important;
+        box-shadow: 0 3px 10px rgba(15,52,96,0.15) !important;
+    }
+
+    /* ── Chat RTL ── */
+    [data-testid="stChatMessage"] { direction: rtl !important; text-align: right !important; }
+    [data-testid="stChatMessage"] > div { direction: rtl !important; }
+    [data-testid="stChatMessage"] p { text-align: right !important; }
+    .stChatInputContainer textarea {
+        direction: rtl !important; text-align: right !important;
+        font-family: 'Heebo', sans-serif !important;
+    }
+
+    /* ── Pagination ── */
+    .pg-info {
+        background: white; border-radius: 12px; padding: 10px 20px;
+        font-size: 0.84rem; font-weight: 600; color: #475569;
+        box-shadow: 0 1px 8px rgba(0,0,0,0.06); text-align: center;
+    }
+
+    /* ── Spinner ── */
+    [data-testid="stSpinner"] p { font-family: 'Heebo', sans-serif !important; color: #475569 !important; }
 
     /* ── Caption / small text ── */
     .stCaption, small { color: #94a3b8 !important; font-size: 0.78rem !important; }
@@ -457,13 +513,18 @@ def style_fig(fig, height=300):
         height=height,
         margin=dict(l=0, r=0, t=30, b=0),
         paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="#fafafa",
         font=dict(family="Heebo, Arial", size=12, color="#475569"),
-        xaxis=dict(tickangle=-45, gridcolor="#f1f5f9", showgrid=True),
-        yaxis=dict(gridcolor="#f1f5f9", showgrid=True),
+        xaxis=dict(tickangle=-45, gridcolor="#f1f5f9", showgrid=True,
+                   linecolor="#e2e8f0", tickfont=dict(size=11)),
+        yaxis=dict(gridcolor="#f1f5f9", showgrid=True,
+                   linecolor="#e2e8f0", tickfont=dict(size=11)),
         legend=dict(orientation="h", yanchor="bottom", y=1.02,
                     xanchor="right", x=1, font=dict(size=11)),
+        hoverlabel=dict(bgcolor="white", font_size=13,
+                        font_family="Heebo, Arial", bordercolor="#e2e8f0"),
     )
+    fig.update_traces(marker_line_width=0)
     return fig
 
 
@@ -1063,22 +1124,32 @@ def render_history(u, is_admin, df_users, df_actions):
         except Exception: pass
 
     # דפדוף
-    st.divider()
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
     PAGE_SIZE   = 15
     total_pages = max(1,(len(filtered)+PAGE_SIZE-1)//PAGE_SIZE)
     if "hist_page" not in st.session_state: st.session_state.hist_page = 0
     st.session_state.hist_page = min(st.session_state.hist_page, total_pages-1)
 
-    pg1,pg2,pg3 = st.columns([1,2,1])
+    pg1,pg2,pg3 = st.columns([1,3,1])
     with pg1:
         if st.session_state.hist_page>0:
-            if st.button("◀ הקודם", key="pg_prev"):
+            if st.button("◀ הקודם", key="pg_prev", use_container_width=True):
                 st.session_state.hist_page-=1; st.rerun()
     with pg2:
-        st.markdown(f"<div style='text-align:center;color:#888;padding:6px'>עמוד {st.session_state.hist_page+1} מתוך {total_pages}</div>", unsafe_allow_html=True)
+        progress = (st.session_state.hist_page+1) / total_pages
+        st.markdown(f"""
+        <div class="pg-info">
+            עמוד <span style="color:#0f3460;font-size:1.05rem;font-weight:800">
+            {st.session_state.hist_page+1}</span>
+            <span style="color:#cbd5e1"> / {total_pages}</span>
+            <div style="background:#e2e8f0;border-radius:4px;height:4px;margin-top:8px">
+                <div style="background:linear-gradient(90deg,#0f3460,#1565c0);height:4px;
+                            border-radius:4px;width:{progress*100:.0f}%"></div>
+            </div>
+        </div>""", unsafe_allow_html=True)
     with pg3:
         if st.session_state.hist_page<total_pages-1:
-            if st.button("הבא ▶", key="pg_next"):
+            if st.button("הבא ▶", key="pg_next", use_container_width=True):
                 st.session_state.hist_page+=1; st.rerun()
 
     start   = st.session_state.hist_page * PAGE_SIZE
