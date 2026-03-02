@@ -4,6 +4,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 import google.generativeai as genai
 import os
+import re
 import plotly.express as px
 from io import BytesIO
 from datetime import datetime
@@ -750,10 +751,9 @@ def render_smart_card(row: pd.Series):
 
     # תיאור נקי: הסר מספרי סוגריים לשורה נפרדת
     raw_desc = str(row.get("תיאור", row.get("הערה", "")))
-    import re as _re
-    uid_part = _re.search(r'\(([^)]+)\)', raw_desc)
+    uid_part = re.search(r'\(([^)]+)\)', raw_desc)
     uid_badge = f'<span style="direction:ltr;background:#f1f5f9;border-radius:6px;padding:1px 7px;font-size:0.7rem;color:#64748b;font-family:monospace;margin-right:6px">{uid_part.group(1)}</span>' if uid_part else ""
-    clean_desc = _re.sub(r'\s*\([^)]+\)', '', raw_desc).strip()
+    clean_desc = re.sub(r'\s*\([^)]+\)', '', raw_desc).strip()
 
     after_raw = row.get("יתרה לאחר פעולה", row.get("יתרה", ""))
     date_val  = str(row.get("תאריך", ""))
@@ -933,6 +933,14 @@ def render_dashboard(u, is_admin, df_users, df_actions):
     try:    total_volume = pd.to_numeric(df_actions["סכום"], errors="coerce").sum()
     except: total_volume = 0
 
+    # חישוב הכנסות/הוצאות אישיות
+    if not my_act.empty and "סכום נטו" in my_act.columns:
+        net_vals = pd.to_numeric(my_act["סכום נטו"], errors="coerce").fillna(0)
+        personal_income = net_vals[net_vals > 0].sum()
+        personal_expense = net_vals[net_vals < 0].abs().sum()
+    else:
+        personal_income = personal_expense = 0.0
+
     c1,c2,c3 = st.columns(3)
     with c1:
         st.markdown(f"""<div class="mc-wrap mc-blue">
@@ -942,19 +950,35 @@ def render_dashboard(u, is_admin, df_users, df_actions):
             <div class="mc-sub">⏱ מתעדכן כל 10 דקות</div>
         </div>""", unsafe_allow_html=True)
     with c2:
-        st.markdown(f"""<div class="mc-wrap mc-green">
-            <div class="mc-icon">🔄</div>
-            <div class="mc-label">מחזור כללי במערכת</div>
-            <div class="mc-value">₪{total_volume:,.0f}</div>
-            <div class="mc-sub">סך כל הפעולות</div>
-        </div>""", unsafe_allow_html=True)
+        if is_admin:
+            st.markdown(f"""<div class="mc-wrap mc-green">
+                <div class="mc-icon">🔄</div>
+                <div class="mc-label">מחזור כללי במערכת</div>
+                <div class="mc-value">₪{total_volume:,.0f}</div>
+                <div class="mc-sub">סך כל הפעולות</div>
+            </div>""", unsafe_allow_html=True)
+        else:
+            st.markdown(f"""<div class="mc-wrap mc-green">
+                <div class="mc-icon">📥</div>
+                <div class="mc-label">סך הכנסות</div>
+                <div class="mc-value">₪{personal_income:,.0f}</div>
+                <div class="mc-sub">זכויות שהתקבלו</div>
+            </div>""", unsafe_allow_html=True)
     with c3:
-        st.markdown(f"""<div class="mc-wrap mc-purple">
-            <div class="mc-icon">📋</div>
-            <div class="mc-label">פעולות בחשבוני</div>
-            <div class="mc-value">{len(my_act)}</div>
-            <div class="mc-sub">פעולות שבוצעו</div>
-        </div>""", unsafe_allow_html=True)
+        if is_admin:
+            st.markdown(f"""<div class="mc-wrap mc-purple">
+                <div class="mc-icon">📋</div>
+                <div class="mc-label">סך פעולות מערכת</div>
+                <div class="mc-value">{len(df_actions)}</div>
+                <div class="mc-sub">כלל הפעולות</div>
+            </div>""", unsafe_allow_html=True)
+        else:
+            st.markdown(f"""<div class="mc-wrap mc-purple">
+                <div class="mc-icon">📤</div>
+                <div class="mc-label">סך הוצאות</div>
+                <div class="mc-value">₪{personal_expense:,.0f}</div>
+                <div class="mc-sub">חובות ששולמו</div>
+            </div>""", unsafe_allow_html=True)
 
     st.markdown("")
     col_chart, col_feed = st.columns([1, 1.4])
@@ -1182,6 +1206,35 @@ def render_history(u, is_admin, df_users, df_actions):
 
     start   = st.session_state.hist_page * PAGE_SIZE
     page_df = filtered.iloc[::-1].reset_index(drop=True).iloc[start:start+PAGE_SIZE]
+
+    # שורת סיכום לתוצאות הסינון
+    if not filtered.empty and "סכום_num" in filtered.columns:
+        f_credits  = filtered[filtered.get("כיוון", pd.Series()) == "זכות"]["סכום_num"].abs().sum() if "כיוון" in filtered.columns else 0
+        f_debits   = filtered[filtered.get("כיוון", pd.Series()) == "חובה"]["סכום_num"].abs().sum() if "כיוון" in filtered.columns else 0
+        f_credits_v = filtered[filtered["סכום_num"] > 0]["סכום_num"].sum()
+        f_debits_v  = filtered[filtered["סכום_num"] < 0]["סכום_num"].abs().sum()
+        total_in  = f_credits_v or f_credits
+        total_out = f_debits_v  or f_debits
+        if total_in or total_out:
+            st.markdown(f"""
+            <div style="display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+                <div style="flex:1;min-width:140px;background:#f0fdf4;border-radius:12px;
+                            padding:12px 16px;border:1px solid #dcfce7;text-align:center">
+                    <div style="font-size:0.75rem;color:#16a34a;font-weight:600;margin-bottom:3px">📥 סך הכנסות בסינון</div>
+                    <div style="font-size:1.15rem;font-weight:800;color:#14532d;direction:ltr">₪{total_in:,.2f}</div>
+                </div>
+                <div style="flex:1;min-width:140px;background:#fff5f5;border-radius:12px;
+                            padding:12px 16px;border:1px solid #fee2e2;text-align:center">
+                    <div style="font-size:0.75rem;color:#dc2626;font-weight:600;margin-bottom:3px">📤 סך הוצאות בסינון</div>
+                    <div style="font-size:1.15rem;font-weight:800;color:#7f1d1d;direction:ltr">₪{total_out:,.2f}</div>
+                </div>
+                <div style="flex:1;min-width:140px;background:#eff6ff;border-radius:12px;
+                            padding:12px 16px;border:1px solid #dbeafe;text-align:center">
+                    <div style="font-size:0.75rem;color:#2563eb;font-weight:600;margin-bottom:3px">📊 נטו</div>
+                    <div style="font-size:1.15rem;font-weight:800;color:#1e3a8a;direction:ltr">₪{total_in-total_out:,.2f}</div>
+                </div>
+            </div>""", unsafe_allow_html=True)
+
     for _,row in page_df.iterrows():
         render_smart_card(row)
 
@@ -1197,12 +1250,15 @@ def render_personal(u, df_users):
     user_data = row.iloc[0].to_dict() if not row.empty else u
 
     st.markdown('<div class="section-title">👤 החשבון שלי – פרטים מזהים</div>', unsafe_allow_html=True)
-    fields = [("שם משתמש","שם משתמש"),("מספר משתמש","מספר משתמש"),
-              ("תעודת זהות","תעודת זהות"),("כתובת","כתובת"),("סיסמה נוכחית","סיסמה")]
+    raw_pwd = str(user_data.get("סיסמה", "—"))
+    masked_pwd = ("*" * len(raw_pwd)) if raw_pwd not in ("—", "", "nan") else "—"
+    fields = [("שם משתמש","שם משתמש",None),("מספר משתמש","מספר משתמש",None),
+              ("תעודת זהות","תעודת זהות",None),("כתובת","כתובת",None),
+              ("סיסמה נוכחית","סיסמה",masked_pwd)]
     rows_html = "".join(
         f'<div class="detail-row"><span class="detail-label">{lbl}:</span>'
-        f'<span class="detail-value">{user_data.get(key,"—")}</span></div>'
-        for lbl,key in fields
+        f'<span class="detail-value">{override if override is not None else user_data.get(key,"—")}</span></div>'
+        for lbl,key,override in fields
     )
     st.markdown(f"""<div class="detail-block">{rows_html}
         <div class="readonly-note">⚠️ המידע מוצג לקריאה בלבד. לעדכון פרטים, חייג למערכת הטלפונית.</div>
