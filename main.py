@@ -25,105 +25,393 @@ st.set_page_config(
 def inject_css():
     st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;600;700;800&display=swap');
-    html, body, [class*="css"] { direction: rtl; font-family: 'Heebo', 'Segoe UI', Tahoma, Arial, sans-serif; }
-    .stApp { direction: rtl; background-color: #f0f2f6; }
-    #MainMenu, footer, .stDeployButton { visibility: hidden; }
-    .block-container { padding-top: 0.5rem !important; max-width: 1400px; }
+    @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&display=swap');
 
-    /* FIX #12: header active state */
+    /* ── בסיס ── */
+    html, body, [class*="css"], .stApp {
+        direction: rtl;
+        font-family: 'Heebo', 'Segoe UI', Arial, sans-serif !important;
+    }
+    .stApp { background: #f4f6fb !important; }
+    #MainMenu, footer, .stDeployButton, [data-testid="stToolbar"] { visibility: hidden !important; display:none !important; }
+    .block-container { padding-top: 0 !important; padding-bottom: 2rem !important; max-width: 1300px !important; }
+    div[data-testid="stVerticalBlock"] > div { gap: 0 !important; }
+
+    /* ── Header כפתורים ── */
+    div[data-testid="stHorizontalBlock"] button {
+        border-radius: 22px !important;
+        font-family: 'Heebo', sans-serif !important;
+        font-size: 0.85rem !important;
+        font-weight: 500 !important;
+        transition: all 0.2s ease !important;
+        padding: 5px 16px !important;
+    }
     div[data-testid="stHorizontalBlock"] button[kind="primary"] {
-        background: #e8b84b !important; color: #1a1a2e !important;
-        border-color: #e8b84b !important; font-weight: 700 !important;
+        background: #e8b84b !important;
+        color: #1a1a2e !important;
+        border: none !important;
+        font-weight: 700 !important;
+        box-shadow: 0 2px 8px rgba(232,184,75,0.4) !important;
     }
     div[data-testid="stHorizontalBlock"] button[kind="secondary"] {
-        background: transparent !important; color: #ccd6f6 !important;
-        border: 1px solid rgba(255,255,255,0.25) !important;
+        background: rgba(255,255,255,0.08) !important;
+        color: #ccd6f6 !important;
+        border: 1px solid rgba(255,255,255,0.2) !important;
     }
-    div[data-testid="stHorizontalBlock"] button {
-        border-radius: 20px !important; font-family: 'Heebo',sans-serif !important;
-        font-size: 0.88rem !important; transition: all 0.2s !important;
+    div[data-testid="stHorizontalBlock"] button[kind="secondary"]:hover {
+        background: rgba(232,184,75,0.15) !important;
+        color: #e8b84b !important;
+        border-color: #e8b84b !important;
     }
-    .header-bg {
-        background: linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%);
-        padding: 10px 20px; border-radius: 0 0 12px 12px;
-        margin-bottom: 16px; box-shadow: 0 3px 12px rgba(0,0,0,0.3);
-    }
-    .header-logo { color: #e8b84b; font-size: 1.4rem; font-weight: 800; letter-spacing:1px; padding:8px 0; }
 
-    /* FIX #2: login */
-    .login-bg {
-        min-height: 85vh;
-        background: linear-gradient(135deg, rgba(15,52,96,0.92) 0%, rgba(26,26,46,0.85) 100%),
-                    url('https://picsum.photos/seed/finance/1600/900') center/cover no-repeat;
-        border-radius: 16px; display: flex; align-items: center;
-        padding: 40px; justify-content: flex-end; margin-bottom: 20px;
+    /* ── Header ── */
+    .header-wrap {
+        background: linear-gradient(135deg, #0d1b2a 0%, #1a1a2e 40%, #0f3460 100%);
+        padding: 0 24px;
+        margin: 0 -1rem 0 -1rem;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.35);
+        border-bottom: 2px solid rgba(232,184,75,0.3);
+    }
+    .header-logo {
+        color: #e8b84b;
+        font-size: 1.35rem;
+        font-weight: 900;
+        letter-spacing: 1.5px;
+        padding: 14px 0;
+        text-shadow: 0 2px 8px rgba(232,184,75,0.3);
+    }
+    .header-logo span { color: #fff; font-weight: 300; font-size: 1rem; margin-right: 4px; }
+
+    /* ── Tabs ── */
+    .stTabs [data-baseweb="tab-list"] {
+        background: white !important;
+        border-radius: 14px !important;
+        padding: 6px !important;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.08) !important;
+        gap: 4px !important;
+        margin-bottom: 20px !important;
+    }
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 10px !important;
+        font-family: 'Heebo', sans-serif !important;
+        font-size: 0.9rem !important;
+        font-weight: 600 !important;
+        color: #666 !important;
+        padding: 8px 20px !important;
+        border: none !important;
+        background: transparent !important;
+        transition: all 0.2s !important;
+    }
+    .stTabs [aria-selected="true"] {
+        background: linear-gradient(135deg, #0f3460, #1a237e) !important;
+        color: white !important;
+        box-shadow: 0 3px 10px rgba(15,52,96,0.3) !important;
+    }
+    .stTabs [data-baseweb="tab-highlight"] { display: none !important; }
+    .stTabs [data-baseweb="tab-border"] { display: none !important; }
+
+    /* ── Inputs ── */
+    .stTextInput > div > div > input,
+    .stNumberInput > div > div > input,
+    .stSelectbox > div > div > div {
+        border-radius: 10px !important;
+        border: 1.5px solid #e2e8f0 !important;
+        font-family: 'Heebo', sans-serif !important;
+        font-size: 0.92rem !important;
+        padding: 8px 14px !important;
+        direction: rtl !important;
+        transition: border-color 0.2s !important;
+    }
+    .stTextInput > div > div > input:focus,
+    .stNumberInput > div > div > input:focus {
+        border-color: #0f3460 !important;
+        box-shadow: 0 0 0 3px rgba(15,52,96,0.1) !important;
+    }
+    .stTextInput label, .stNumberInput label, .stSelectbox label, .stMultiselect label {
+        font-family: 'Heebo', sans-serif !important;
+        font-size: 0.82rem !important;
+        font-weight: 600 !important;
+        color: #475569 !important;
+    }
+
+    /* ── כפתורים כלליים ── */
+    .stButton > button {
+        border-radius: 10px !important;
+        font-family: 'Heebo', sans-serif !important;
+        font-weight: 600 !important;
+        transition: all 0.2s !important;
+    }
+    .stButton > button[kind="primary"] {
+        background: linear-gradient(135deg, #0f3460, #1565c0) !important;
+        color: white !important;
+        border: none !important;
+        box-shadow: 0 3px 12px rgba(15,52,96,0.35) !important;
+    }
+    .stButton > button[kind="primary"]:hover {
+        transform: translateY(-1px) !important;
+        box-shadow: 0 5px 18px rgba(15,52,96,0.45) !important;
+    }
+
+    /* ── Login ── */
+    .login-screen {
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: linear-gradient(135deg, #0d1b2a 0%, #0f3460 50%, #1565c0 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
     }
     .login-card {
-        background: rgba(255,255,255,0.98); border-radius: 20px; padding: 40px 36px;
-        box-shadow: 0 16px 48px rgba(0,0,0,0.3); width: 100%;
+        background: white;
+        border-radius: 24px;
+        padding: 48px 44px 40px;
+        box-shadow: 0 24px 80px rgba(0,0,0,0.35);
+        width: 100%;
+        max-width: 420px;
+        direction: rtl;
+        animation: fadeUp 0.4s ease;
     }
-    .login-title { text-align:center; font-size:1.6rem; font-weight:800; color:#1a1a2e; margin-bottom:4px; }
-    .login-sub   { text-align:center; color:#999; font-size:0.88rem; margin-bottom:24px; }
+    @keyframes fadeUp {
+        from { opacity:0; transform: translateY(20px); }
+        to   { opacity:1; transform: translateY(0); }
+    }
+    .login-logo {
+        text-align: center;
+        font-size: 3rem;
+        margin-bottom: 8px;
+    }
+    .login-title {
+        text-align: center;
+        font-size: 1.7rem;
+        font-weight: 800;
+        color: #0f3460;
+        margin-bottom: 4px;
+    }
+    .login-sub {
+        text-align: center;
+        color: #94a3b8;
+        font-size: 0.88rem;
+        margin-bottom: 28px;
+    }
+    .login-card .stTextInput > div > div > input {
+        background: #f8fafc !important;
+    }
+    .login-divider {
+        text-align: center;
+        color: #cbd5e1;
+        font-size: 0.8rem;
+        margin: 16px 0;
+        position: relative;
+    }
+    .login-divider::before, .login-divider::after {
+        content: '';
+        position: absolute;
+        top: 50%;
+        width: 40%;
+        height: 1px;
+        background: #e2e8f0;
+    }
+    .login-divider::before { right: 0; }
+    .login-divider::after  { left: 0; }
 
-    /* metric cards */
-    .metric-card { background:white; border-radius:16px; padding:22px 26px; box-shadow:0 3px 14px rgba(0,0,0,0.07); text-align:center; height:100%; }
-    .metric-card .mc-label { color:#888; font-size:0.82rem; margin-bottom:6px; }
-    .metric-card .mc-value { font-size:2rem; font-weight:800; color:#1a1a2e; }
-    .metric-card .mc-sub   { font-size:0.72rem; color:#aaa; margin-top:4px; }
+    /* ── Greeting bar ── */
+    .greeting-bar {
+        background: linear-gradient(135deg, #0f3460 0%, #1565c0 100%);
+        border-radius: 16px;
+        padding: 20px 28px;
+        margin-bottom: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        color: white;
+    }
+    .greeting-name { font-size: 1.3rem; font-weight: 700; }
+    .greeting-uid  { font-size: 0.82rem; opacity: 0.75; margin-top: 2px; }
+    .greeting-badge {
+        background: rgba(255,255,255,0.15);
+        border-radius: 12px;
+        padding: 8px 18px;
+        font-size: 0.82rem;
+        font-weight: 600;
+        border: 1px solid rgba(255,255,255,0.2);
+    }
 
-    /* smart cards */
-    .smart-card { border-radius:14px; padding:14px 18px; margin-bottom:10px; display:flex; align-items:center; gap:14px; box-shadow:0 2px 10px rgba(0,0,0,0.06); direction:rtl; transition:transform 0.15s,box-shadow 0.15s; }
-    .smart-card:hover { transform:translateY(-2px); box-shadow:0 4px 14px rgba(0,0,0,0.1); }
-    .smart-card.debit  { background:#fff5f5; border-right:5px solid #e53935; }
-    .smart-card.credit { background:#f0fff4; border-right:5px solid #43a047; }
-    .smart-card.failed { background:#fff8e1; border-right:5px solid #f9a825; }
-    .smart-card.admin  { background:#e8f4ff; border-right:5px solid #1e88e5; }
-    .card-circle { min-width:58px; height:58px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:0.78rem; flex-shrink:0; text-align:center; line-height:1.2; }
-    .debit  .card-circle { background:#ffcdd2; color:#b71c1c; }
-    .credit .card-circle { background:#c8e6c9; color:#1b5e20; }
-    .failed .card-circle { background:#fff3e0; color:#e65100; }
-    .admin  .card-circle { background:#bbdefb; color:#0d47a1; }
-    .card-main { flex:1; min-width:0; }
-    .card-main .c-title { font-weight:600; font-size:0.88rem; color:#1a1a2e; margin-bottom:3px; }
-    .card-main .c-sub   { font-size:0.78rem; color:#666; }
-    .card-side { text-align:left; min-width:110px; flex-shrink:0; }
-    .badge { display:inline-block; padding:2px 9px; border-radius:12px; font-size:0.7rem; font-weight:700; margin-bottom:4px; }
-    .badge-ok     { background:#e8f5e9; color:#2e7d32; }
-    .badge-failed { background:#fff3e0; color:#e65100; }
-    .badge-admin  { background:#e3f2fd; color:#1565c0; }
-    .c-date  { font-size:0.72rem; color:#999; margin:3px 0; }
-    .c-phone { font-size:0.68rem; color:#bbb; }
+    /* ── Metric cards ── */
+    .mc-wrap { border-radius: 18px; padding: 24px 26px; height: 100%; color: white; position: relative; overflow: hidden; }
+    .mc-wrap::after {
+        content: '';
+        position: absolute;
+        top: -20px; left: -20px;
+        width: 100px; height: 100px;
+        border-radius: 50%;
+        background: rgba(255,255,255,0.08);
+    }
+    .mc-blue   { background: linear-gradient(135deg, #0f3460, #1565c0); box-shadow: 0 6px 20px rgba(15,52,96,0.35); }
+    .mc-green  { background: linear-gradient(135deg, #1b5e20, #388e3c); box-shadow: 0 6px 20px rgba(27,94,32,0.35); }
+    .mc-purple { background: linear-gradient(135deg, #4a148c, #7b1fa2); box-shadow: 0 6px 20px rgba(74,20,140,0.35); }
+    .mc-label  { font-size: 0.78rem; opacity: 0.8; margin-bottom: 8px; font-weight: 500; }
+    .mc-value  { font-size: 2.1rem; font-weight: 800; line-height: 1; margin-bottom: 8px; }
+    .mc-sub    { font-size: 0.7rem; opacity: 0.65; }
+    .mc-icon   { position: absolute; top: 18px; left: 20px; font-size: 2rem; opacity: 0.2; }
 
-    /* info page */
-    .info-page { max-width:820px; margin:30px auto; background:white; border-radius:16px; padding:44px 48px; box-shadow:0 2px 14px rgba(0,0,0,0.07); line-height:1.9; }
-    .info-page h2 { color:#0f3460; border-bottom:2px solid #e8b84b; padding-bottom:8px; }
+    /* ── Smart cards ── */
+    .smart-card {
+        border-radius: 14px;
+        padding: 14px 18px;
+        margin-bottom: 10px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+        direction: rtl;
+        transition: transform 0.15s, box-shadow 0.15s;
+        border: 1px solid transparent;
+    }
+    .smart-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.1); }
+    .smart-card.debit  { background: #fff5f5; border-right: 4px solid #e53935; border-color: #fee2e2; }
+    .smart-card.credit { background: #f0fdf4; border-right: 4px solid #43a047; border-color: #dcfce7; }
+    .smart-card.failed { background: #fffbeb; border-right: 4px solid #f9a825; border-color: #fef3c7; }
+    .smart-card.admin  { background: #eff6ff; border-right: 4px solid #1e88e5; border-color: #dbeafe; }
+    .card-circle {
+        min-width: 54px; height: 54px;
+        border-radius: 14px;
+        display: flex; align-items: center; justify-content: center;
+        font-weight: 700; font-size: 0.75rem;
+        flex-shrink: 0; text-align: center; line-height: 1.2;
+    }
+    .debit  .card-circle { background: #fee2e2; color: #b71c1c; }
+    .credit .card-circle { background: #dcfce7; color: #14532d; }
+    .failed .card-circle { background: #fef3c7; color: #92400e; }
+    .admin  .card-circle { background: #dbeafe; color: #1e3a8a; }
+    .card-main { flex: 1; min-width: 0; }
+    .card-main .c-title { font-weight: 600; font-size: 0.9rem; color: #1e293b; margin-bottom: 3px; }
+    .card-main .c-sub   { font-size: 0.78rem; color: #64748b; }
+    .card-side { text-align: left; min-width: 100px; flex-shrink: 0; }
+    .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 0.68rem; font-weight: 700; margin-bottom: 4px; }
+    .badge-ok     { background: #dcfce7; color: #14532d; }
+    .badge-failed { background: #fef3c7; color: #92400e; }
+    .badge-admin  { background: #dbeafe; color: #1e3a8a; }
+    .c-date  { font-size: 0.7rem; color: #94a3b8; margin: 3px 0; }
+    .c-phone { font-size: 0.68rem; color: #cbd5e1; }
 
-    /* FIX #6: floating chatbot */
-    #chat-fab-wrapper { position:fixed !important; bottom:28px !important; left:28px !important; z-index:99999 !important; }
-    .chat-fab-btn { width:58px; height:58px; border-radius:50%; background:linear-gradient(135deg,#0f3460,#e8b84b); border:none; cursor:pointer; font-size:1.5rem; color:white; box-shadow:0 4px 18px rgba(0,0,0,0.28); animation:pulse 2.5s infinite; display:flex; align-items:center; justify-content:center; }
-    .chat-panel-fixed { position:fixed !important; bottom:95px !important; left:28px !important; width:360px; max-height:480px; background:white; border-radius:18px; box-shadow:0 8px 30px rgba(0,0,0,0.18); z-index:99998 !important; flex-direction:column; overflow:hidden; }
-    .chat-panel-hdr { background:linear-gradient(135deg,#1a1a2e,#0f3460); color:white; padding:14px 18px; font-weight:700; font-size:1rem; display:flex; justify-content:space-between; align-items:center; }
-    @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(232,184,75,0.5);}70%{box-shadow:0 0 0 12px rgba(232,184,75,0);}100%{box-shadow:0 0 0 0 rgba(232,184,75,0);} }
+    /* ── Section titles ── */
+    .section-title {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #0f3460;
+        margin: 22px 0 12px;
+        padding: 10px 14px;
+        background: white;
+        border-radius: 10px;
+        border-right: 4px solid #e8b84b;
+        box-shadow: 0 1px 6px rgba(0,0,0,0.05);
+    }
 
-    .section-title { font-size:1.05rem; font-weight:700; color:#0f3460; margin:18px 0 10px; border-right:4px solid #e8b84b; padding-right:10px; }
+    /* ── Info pages ── */
+    .info-page {
+        max-width: 820px; margin: 30px auto;
+        background: white; border-radius: 20px;
+        padding: 44px 52px;
+        box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+        line-height: 2;
+    }
+    .info-page h2 { color: #0f3460; border-bottom: 2px solid #e8b84b; padding-bottom: 10px; margin-bottom: 20px; }
 
-    /* personal */
-    .detail-block { background:white; border-radius:14px; padding:26px 30px; box-shadow:0 2px 10px rgba(0,0,0,0.06); margin-bottom:18px; }
-    .detail-row { display:flex; gap:16px; margin-bottom:12px; align-items:baseline; flex-wrap:wrap; }
-    .detail-label { color:#888; font-size:0.82rem; min-width:120px; }
-    .detail-value { font-weight:600; color:#1a1a2e; font-size:0.95rem; }
-    .phone-tag { display:inline-block; background:#e8f4ff; color:#1565c0; border-radius:20px; padding:4px 14px; font-size:0.85rem; margin:4px; font-weight:600; }
-    .readonly-note { background:#fff8e1; border:1px solid #ffe082; border-radius:10px; padding:12px 16px; font-size:0.82rem; color:#795548; margin-top:16px; }
+    /* ── Personal details ── */
+    .detail-block {
+        background: white; border-radius: 16px;
+        padding: 28px 32px;
+        box-shadow: 0 2px 14px rgba(0,0,0,0.06);
+        margin-bottom: 18px;
+    }
+    .detail-row { display: flex; gap: 16px; margin-bottom: 14px; align-items: center; flex-wrap: wrap; border-bottom: 1px solid #f1f5f9; padding-bottom: 10px; }
+    .detail-row:last-of-type { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+    .detail-label { color: #64748b; font-size: 0.82rem; min-width: 130px; font-weight: 500; }
+    .detail-value { font-weight: 700; color: #0f172a; font-size: 0.95rem; }
+    .phone-tag {
+        display: inline-block;
+        background: linear-gradient(135deg, #eff6ff, #dbeafe);
+        color: #1d4ed8;
+        border-radius: 20px;
+        padding: 5px 16px;
+        font-size: 0.85rem;
+        margin: 4px;
+        font-weight: 600;
+        border: 1px solid #bfdbfe;
+    }
+    .readonly-note {
+        background: #fffbeb;
+        border: 1px solid #fde68a;
+        border-radius: 12px;
+        padding: 12px 16px;
+        font-size: 0.82rem;
+        color: #92400e;
+        margin-top: 16px;
+        display: flex;
+        gap: 8px;
+        align-items: flex-start;
+    }
 
-    /* FIX #9: mobile */
-    @media (max-width:768px) {
-        .smart-card { flex-direction:column; align-items:flex-start; }
-        .card-side  { text-align:right; min-width:unset; }
-        .detail-row { flex-direction:column; gap:4px; }
-        .chat-panel-fixed { width:calc(100vw - 56px) !important; left:10px !important; }
-        .block-container { padding-left:8px !important; padding-right:8px !important; }
-        .metric-card .mc-value { font-size:1.4rem; }
+    /* ── Floating chat ── */
+    #chat-fab-wrapper { position: fixed !important; bottom: 28px !important; left: 28px !important; z-index: 99999 !important; }
+    .chat-fab-btn {
+        width: 60px; height: 60px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #0f3460, #1565c0);
+        border: none; cursor: pointer;
+        font-size: 1.5rem; color: white;
+        box-shadow: 0 6px 24px rgba(15,52,96,0.45);
+        animation: pulse 2.5s infinite;
+        display: flex; align-items: center; justify-content: center;
+        transition: transform 0.2s;
+    }
+    .chat-fab-btn:hover { transform: scale(1.08); }
+    .chat-panel-fixed {
+        position: fixed !important;
+        bottom: 98px !important;
+        left: 28px !important;
+        width: 360px;
+        max-height: 480px;
+        background: white;
+        border-radius: 20px;
+        box-shadow: 0 12px 40px rgba(0,0,0,0.2);
+        z-index: 99998 !important;
+        flex-direction: column;
+        overflow: hidden;
+        border: 1px solid #e2e8f0;
+    }
+    .chat-panel-hdr {
+        background: linear-gradient(135deg, #0f3460, #1565c0);
+        color: white;
+        padding: 16px 20px;
+        font-weight: 700;
+        font-size: 0.95rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    @keyframes pulse {
+        0%   { box-shadow: 0 0 0 0 rgba(15,52,96,0.5); }
+        70%  { box-shadow: 0 0 0 14px rgba(15,52,96,0); }
+        100% { box-shadow: 0 0 0 0 rgba(15,52,96,0); }
+    }
+
+    /* ── Divider ── */
+    hr { border-color: #e2e8f0 !important; margin: 16px 0 !important; }
+
+    /* ── Caption / small text ── */
+    .stCaption, small { color: #94a3b8 !important; font-size: 0.78rem !important; }
+
+    /* ── Mobile ── */
+    @media (max-width: 768px) {
+        .smart-card { flex-direction: column; align-items: flex-start; }
+        .card-side  { text-align: right; min-width: unset; }
+        .detail-row { flex-direction: column; gap: 4px; }
+        .chat-panel-fixed { width: calc(100vw - 60px) !important; left: 10px !important; }
+        .block-container { padding-left: 8px !important; padding-right: 8px !important; }
+        .mc-value { font-size: 1.5rem !important; }
+        .greeting-bar { flex-direction: column; gap: 10px; text-align: center; }
     }
     </style>
     """, unsafe_allow_html=True)
@@ -381,52 +669,74 @@ def render_smart_card(row: pd.Series):
 # Header  FIX #12
 # ============================
 def render_header(current_page: str):
-    st.markdown('<div class="header-bg">', unsafe_allow_html=True)
-    c_logo, c_nav, c_auth = st.columns([2,6,2])
-
-    with c_logo:
-        st.markdown('<div class="header-logo">💰 שיעבודא פון</div>', unsafe_allow_html=True)
-
     pages = [
         ("app",     "🏠 אזור אישי" if st.session_state.get("authenticated") else "🏠 ראשי"),
         ("about",   "קצת עלינו"),
         ("contact", "צור קשר"),
         ("terms",   "תקנון"),
     ]
-    with c_nav:
-        nav_cols = st.columns(len(pages))
-        for i,(page_key,label) in enumerate(pages):
-            with nav_cols[i]:
-                t = "primary" if current_page==page_key else "secondary"
-                if st.button(label, key=f"nav_{page_key}", type=t, use_container_width=True):
-                    st.session_state.page = page_key; st.rerun()
+    st.markdown("""
+    <style>
+    .header-wrap { background:linear-gradient(135deg,#0d1b2a 0%,#1a1a2e 40%,#0f3460 100%);
+        padding:0 28px; margin:-1rem -1rem 0 -1rem;
+        box-shadow:0 4px 20px rgba(0,0,0,0.35);
+        border-bottom:2px solid rgba(232,184,75,0.25); }
+    </style>
+    <div class="header-wrap"></div>""", unsafe_allow_html=True)
 
-    with c_auth:
-        if st.session_state.get("authenticated"):
-            if st.button("🚪 יציאה", type="secondary", use_container_width=True):
-                st.session_state.authenticated = False
-                st.session_state.page = "login"; st.rerun()
-        else:
-            if st.button("🔑 כניסה", type="primary", use_container_width=True):
-                st.session_state.page = "login"; st.rerun()
-
-    st.markdown('</div>', unsafe_allow_html=True)
-    st.markdown("")
+    with st.container():
+        st.markdown(
+            '<div style="background:linear-gradient(135deg,#0d1b2a,#0f3460);padding:0 28px;margin:-0.5rem -1rem 0;">',
+            unsafe_allow_html=True)
+        c_logo, c_nav, c_auth = st.columns([2, 6, 2])
+        with c_logo:
+            st.markdown('<div class="header-logo">💰 שיעבודא פון<span>|</span></div>',
+                        unsafe_allow_html=True)
+        with c_nav:
+            nav_cols = st.columns(len(pages))
+            for i, (page_key, label) in enumerate(pages):
+                with nav_cols[i]:
+                    t = "primary" if current_page == page_key else "secondary"
+                    if st.button(label, key=f"nav_{page_key}", type=t, use_container_width=True):
+                        st.session_state.page = page_key; st.rerun()
+        with c_auth:
+            if st.session_state.get("authenticated"):
+                if st.button("🚪 יציאה", type="secondary", use_container_width=True):
+                    st.session_state.authenticated = False
+                    st.session_state.page = "login"; st.rerun()
+            else:
+                if st.button("🔑 כניסה", type="primary", use_container_width=True):
+                    st.session_state.page = "login"; st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
 
 # ============================
 # FIX #1 + #2: Login
 # ============================
 def render_login_page():
-    # FIX #2 – background + ימין
-    st.markdown('<div class="login-bg"></div>', unsafe_allow_html=True)
+    # Full-screen background via CSS on the main block
+    st.markdown("""
+    <style>
+    section[data-testid="stMain"] > div:first-child {
+        min-height: 90vh;
+        background: linear-gradient(135deg,#0d1b2a 0%,#0f3460 50%,#1565c0 100%) !important;
+        border-radius: 20px;
+        padding: 40px 20px !important;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
-    _, col_form, _ = st.columns([1, 1.4, 0.4])
+    _, col_form, _ = st.columns([1, 1.4, 1])
     with col_form:
         st.markdown("""
         <div class="login-card">
-            <div class="login-title">🔐 כניסה למערכת</div>
-            <div class="login-sub">שיעבודא פון | ניהול חשבון אישי</div>
+            <div class="login-logo">💰</div>
+            <div class="login-title">שיעבודא פון</div>
+            <div class="login-sub">ניהול חשבון אישי · כניסה מאובטחת</div>
         </div>""", unsafe_allow_html=True)
 
         # FIX #1 – כפתור עין
@@ -485,7 +795,15 @@ def render_dashboard(u, is_admin, df_users, df_actions):
     sync_time  = datetime.now().strftime("%H:%M")
     my_act     = process_user_actions(df_actions, uid)
 
-    st.markdown(f"### שלום, {u.get('שם משתמש','')} &nbsp;|&nbsp; מספר משתמש: {uid}")
+    admin_badge = "<span style='background:rgba(255,255,255,0.15);border-radius:8px;padding:3px 10px;font-size:0.75rem;margin-right:8px'>מנהל מערכת</span>" if is_admin else ""
+    st.markdown(f"""
+    <div class="greeting-bar">
+        <div>
+            <div class="greeting-name">שלום, {u.get('שם משתמש','')} 👋 {admin_badge}</div>
+            <div class="greeting-uid">מספר משתמש: {uid} · עודכן בשעה {sync_time}</div>
+        </div>
+        <div class="greeting-badge">💰 מערכת פיננסית</div>
+    </div>""", unsafe_allow_html=True)
 
     # FIX #4 – חישוב מחזור נכון
     try:    total_volume = pd.to_numeric(df_actions["סכום"], errors="coerce").sum()
@@ -493,22 +811,25 @@ def render_dashboard(u, is_admin, df_users, df_actions):
 
     c1,c2,c3 = st.columns(3)
     with c1:
-        st.markdown(f"""<div class="metric-card">
-            <div class="mc-label">💰 יתרה נוכחית</div>
-            <div class="mc-value" style="color:#0f3460">₪{balance:,.2f}</div>
-            <div class="mc-sub">⏱ עודכן {sync_time} (כל 10 דקות)</div>
+        st.markdown(f"""<div class="mc-wrap mc-blue">
+            <div class="mc-icon">💰</div>
+            <div class="mc-label">יתרה נוכחית</div>
+            <div class="mc-value">₪{balance:,.2f}</div>
+            <div class="mc-sub">⏱ מתעדכן כל 10 דקות</div>
         </div>""", unsafe_allow_html=True)
     with c2:
-        st.markdown(f"""<div class="metric-card">
-            <div class="mc-label">🔄 מחזור כללי</div>
-            <div class="mc-value" style="color:#388e3c">₪{total_volume:,.0f}</div>
+        st.markdown(f"""<div class="mc-wrap mc-green">
+            <div class="mc-icon">🔄</div>
+            <div class="mc-label">מחזור כללי במערכת</div>
+            <div class="mc-value">₪{total_volume:,.0f}</div>
             <div class="mc-sub">סך כל הפעולות</div>
         </div>""", unsafe_allow_html=True)
     with c3:
-        st.markdown(f"""<div class="metric-card">
-            <div class="mc-label">📋 פעולות בחשבוני</div>
-            <div class="mc-value" style="color:#6a1b9a">{len(my_act)}</div>
-            <div class="mc-sub">סך הכל</div>
+        st.markdown(f"""<div class="mc-wrap mc-purple">
+            <div class="mc-icon">📋</div>
+            <div class="mc-label">פעולות בחשבוני</div>
+            <div class="mc-value">{len(my_act)}</div>
+            <div class="mc-sub">פעולות שבוצעו</div>
         </div>""", unsafe_allow_html=True)
 
     st.markdown("")
