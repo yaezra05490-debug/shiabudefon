@@ -274,26 +274,38 @@ def inject_css():
     .smart-card.failed { background: #fffbeb; border-right: 4px solid #f9a825; border-color: #fef3c7; }
     .smart-card.admin  { background: #eff6ff; border-right: 4px solid #1e88e5; border-color: #dbeafe; }
     .card-circle {
-        min-width: 54px; height: 54px;
+        min-width: 60px; height: 60px;
         border-radius: 14px;
         display: flex; align-items: center; justify-content: center;
-        font-weight: 700; font-size: 0.75rem;
-        flex-shrink: 0; text-align: center; line-height: 1.2;
+        font-weight: 800; font-size: 0.72rem;
+        flex-shrink: 0; text-align: center; line-height: 1.3;
+        direction: ltr;
     }
     .debit  .card-circle { background: #fee2e2; color: #b71c1c; }
     .credit .card-circle { background: #dcfce7; color: #14532d; }
     .failed .card-circle { background: #fef3c7; color: #92400e; }
     .admin  .card-circle { background: #dbeafe; color: #1e3a8a; }
-    .card-main { flex: 1; min-width: 0; }
-    .card-main .c-title { font-weight: 600; font-size: 0.9rem; color: #1e293b; margin-bottom: 3px; }
-    .card-main .c-sub   { font-size: 0.78rem; color: #64748b; }
-    .card-side { text-align: left; min-width: 100px; flex-shrink: 0; }
+    .card-main { flex: 1; min-width: 0; direction: rtl; }
+    .card-main .c-title {
+        font-weight: 600; font-size: 0.9rem; color: #1e293b; margin-bottom: 4px;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        direction: rtl; text-align: right;
+    }
+    .card-main .c-sub   { font-size: 0.78rem; color: #64748b; direction: rtl; text-align: right; }
+    .card-direction {
+        font-size: 0.7rem; font-weight: 700; padding: 2px 8px;
+        border-radius: 8px; margin-top: 4px; display: inline-block;
+    }
+    .dir-credit { background: #dcfce7; color: #14532d; }
+    .dir-debit  { background: #fee2e2; color: #b71c1c; }
+    .dir-admin  { background: #dbeafe; color: #1e3a8a; }
+    .card-side { text-align: right; min-width: 100px; flex-shrink: 0; direction: rtl; }
     .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 0.68rem; font-weight: 700; margin-bottom: 4px; }
     .badge-ok     { background: #dcfce7; color: #14532d; }
     .badge-failed { background: #fef3c7; color: #92400e; }
     .badge-admin  { background: #dbeafe; color: #1e3a8a; }
-    .c-date  { font-size: 0.7rem; color: #94a3b8; margin: 3px 0; }
-    .c-phone { font-size: 0.68rem; color: #cbd5e1; }
+    .c-date  { font-size: 0.7rem; color: #94a3b8; margin: 3px 0; direction: ltr; text-align: right; }
+    .c-phone { font-size: 0.68rem; color: #cbd5e1; direction: ltr; text-align: right; }
 
     /* ── Section titles ── */
     .section-title {
@@ -717,39 +729,55 @@ def render_smart_card(row: pd.Series):
     status    = str(row.get("סטטוס","מוצלחת")).strip()
     direction = str(row.get("כיוון","")).strip()
 
-    is_admin_op = "מנהל" in status.lower()
-    is_failed   = "כושל" in status.lower() or "נכשל" in status.lower()
+    is_admin_op = "מנהל" in status
+    is_failed   = "כושל" in status or "נכשל" in status
 
-    if is_admin_op:   cls,badge_cls,badge_txt = "admin", "badge-admin","פעולת מנהל"
-    elif is_failed:   cls,badge_cls,badge_txt = "failed","badge-failed","כושלת"
-    elif direction=="זכות": cls,badge_cls,badge_txt = "credit","badge-ok","מוצלחת"
-    else:             cls,badge_cls,badge_txt = "debit", "badge-ok","מוצלחת"
+    if is_admin_op:
+        cls, badge_cls, badge_txt = "admin",  "badge-admin",  "פעולת מנהל"
+        dir_cls, dir_lbl = "dir-admin", "🛡️ פעולת מנהל"
+    elif is_failed:
+        cls, badge_cls, badge_txt = "failed", "badge-failed", "כושלת"
+        dir_cls, dir_lbl = "dir-debit",  "❌ כושלת"
+    elif direction == "זכות":
+        cls, badge_cls, badge_txt = "credit", "badge-ok",     "מוצלחת"
+        dir_cls, dir_lbl = "dir-credit", "⬆️ זכות"
+    else:
+        cls, badge_cls, badge_txt = "debit",  "badge-ok",     "מוצלחת"
+        dir_cls, dir_lbl = "dir-debit",  "⬇️ חובה"
 
-    try:    amount_str = f"₪{abs(float(row.get('סכום',0))):,.0f}"
+    try:    amount_str = f"₪{abs(float(row.get('סכום', 0))):,.0f}"
     except: amount_str = "₪-"
 
-    desc      = row.get("תיאור", row.get("הערה",""))
-    after_raw = row.get("יתרה לאחר פעולה", row.get("יתרה",""))
-    date_val  = row.get("תאריך","")
-    time_val  = row.get("שעה","")
-    phone     = row.get("טלפון", row.get("מבצע",""))
+    # תיאור נקי: הסר מספרי סוגריים לשורה נפרדת
+    raw_desc = str(row.get("תיאור", row.get("הערה", "")))
+    import re as _re
+    uid_part = _re.search(r'\(([^)]+)\)', raw_desc)
+    uid_badge = f'<span style="direction:ltr;background:#f1f5f9;border-radius:6px;padding:1px 7px;font-size:0.7rem;color:#64748b;font-family:monospace;margin-right:6px">{uid_part.group(1)}</span>' if uid_part else ""
+    clean_desc = _re.sub(r'\s*\([^)]+\)', '', raw_desc).strip()
+
+    after_raw = row.get("יתרה לאחר פעולה", row.get("יתרה", ""))
+    date_val  = str(row.get("תאריך", ""))
+    time_val  = str(row.get("שעה",   ""))
+    phone     = str(row.get("טלפון", row.get("מבצע", "")))
 
     try:    after_str = f"₪{float(after_raw):,.2f}" if str(after_raw).strip() not in ("","nan","None") else ""
     except: after_str = ""
 
-    after_html = f'<div class="c-sub">יתרה לאחר פעולה: {after_str}</div>' if after_str else ""
-    phone_html = f'<div class="c-phone">📱 {phone}</div>' if str(phone).strip() else ""
+    after_html = f'<div class="c-sub">יתרה לאחר: <span style="direction:ltr;display:inline-block">{after_str}</span></div>' if after_str else ""
+    phone_html = f'<div class="c-phone"><span style="direction:ltr;display:inline-block">{phone}</span></div>' if phone.strip() and phone != "nan" else ""
+    time_html  = f'{date_val}<br><span style="color:#cbd5e1">{time_val}</span>' if time_val.strip() else date_val
 
     st.markdown(f"""
     <div class="smart-card {cls}">
         <div class="card-circle">{amount_str}</div>
         <div class="card-main">
-            <div class="c-title">{desc}</div>
+            <div class="c-title">{clean_desc}</div>
+            <div>{uid_badge}<span class="card-direction {dir_cls}">{dir_lbl}</span></div>
             {after_html}
         </div>
         <div class="card-side">
             <span class="badge {badge_cls}">{badge_txt}</span>
-            <div class="c-date">{date_val} {time_val}</div>
+            <div class="c-date">{time_html}</div>
             {phone_html}
         </div>
     </div>""", unsafe_allow_html=True)
