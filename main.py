@@ -450,6 +450,35 @@ def inject_chat_fab_js():
 
 inject_css()
 
+
+def style_fig(fig, height=300):
+    """תבנית Plotly אחידה."""
+    fig.update_layout(
+        height=height,
+        margin=dict(l=0, r=0, t=30, b=0),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(family="Heebo, Arial", size=12, color="#475569"),
+        xaxis=dict(tickangle=-45, gridcolor="#f1f5f9", showgrid=True),
+        yaxis=dict(gridcolor="#f1f5f9", showgrid=True),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02,
+                    xanchor="right", x=1, font=dict(size=11)),
+    )
+    return fig
+
+
+def render_empty_state(icon: str, title: str, subtitle: str = ""):
+    """כרטיס empty state מעוצב."""
+    sub_html = f'<div style="font-size:0.84rem;color:#94a3b8;margin-top:4px">{subtitle}</div>' if subtitle else ""
+    st.markdown(f"""
+    <div style="text-align:center;padding:44px 24px;background:white;border-radius:18px;
+                box-shadow:0 2px 12px rgba(0,0,0,0.06);margin:8px 0">
+        <div style="font-size:3.2rem;margin-bottom:14px">{icon}</div>
+        <div style="font-size:1rem;font-weight:700;color:#1e293b">{title}</div>
+        {sub_html}
+    </div>""", unsafe_allow_html=True)
+
+
 # ============================
 # משתנים
 # ============================
@@ -715,28 +744,34 @@ def render_header(current_page: str):
 # FIX #1 + #2: Login
 # ============================
 def render_login_page():
-    # Full-screen background via CSS on the main block
     st.markdown("""
     <style>
-    section[data-testid="stMain"] > div:first-child {
-        min-height: 90vh;
-        background: linear-gradient(135deg,#0d1b2a 0%,#0f3460 50%,#1565c0 100%) !important;
-        border-radius: 20px;
-        padding: 40px 20px !important;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+    /* Login: blue background full page */
+    .block-container {
+        background: linear-gradient(135deg, #0d1b2a 0%, #0f3460 55%, #1565c0 100%) !important;
+        min-height: 88vh !important;
+        padding: 60px 20px 40px !important;
+        border-radius: 0 !important;
+        max-width: 100% !important;
+    }
+    /* center column as white card */
+    [data-testid="stColumns"] > [data-testid="column"]:nth-child(2) > div:first-child > div:first-child {
+        background: white !important;
+        border-radius: 24px !important;
+        padding: 36px 40px 32px !important;
+        box-shadow: 0 24px 80px rgba(0,0,0,0.45) !important;
+        animation: fadeUp 0.35s ease;
     }
     </style>
     """, unsafe_allow_html=True)
 
-    _, col_form, _ = st.columns([1, 1.4, 1])
+    _, col_form, _ = st.columns([1, 1.3, 1])
     with col_form:
         st.markdown("""
-        <div class="login-card">
-            <div class="login-logo">💰</div>
-            <div class="login-title">שיעבודא פון</div>
-            <div class="login-sub">ניהול חשבון אישי · כניסה מאובטחת</div>
+        <div style="text-align:center;padding-bottom:4px">
+            <div style="font-size:3rem;line-height:1.1">💰</div>
+            <div style="font-size:1.75rem;font-weight:900;color:#0f3460;margin:10px 0 4px">שיעבודא פון</div>
+            <div style="color:#94a3b8;font-size:0.88rem;margin-bottom:28px">ניהול חשבון אישי &middot; כניסה מאובטחת</div>
         </div>""", unsafe_allow_html=True)
 
         # FIX #1 – כפתור עין
@@ -847,19 +882,17 @@ def render_dashboard(u, is_admin, df_users, df_actions):
                 try:
                     df_c["סכום נטו"] = pd.to_numeric(df_c["סכום נטו"], errors="coerce").fillna(0)
                     df_c["צבע"] = df_c["סכום נטו"].apply(lambda x: "הכנסה" if x>=0 else "הוצאה")
-                    fig = px.bar(df_c.tail(20), x="תאריך", y="סכום נטו", color="צבע",   # FIX #3
-                                 color_discrete_map={"הכנסה":"#43a047","הוצאה":"#e53935"},
-                                 height=280)
-                    fig.update_layout(margin=dict(l=0,r=0,t=10,b=0), showlegend=True,
-                                      legend_title="", xaxis_title="תאריך", yaxis_title="₪",
-                                      xaxis=dict(tickangle=-45))
+                    fig = px.bar(df_c.tail(20), x="תאריך", y="סכום נטו", color="צבע",
+                                 color_discrete_map={"הכנסה":"#22c55e","הוצאה":"#ef4444"})
+                    style_fig(fig, height=280)
+                    fig.update_layout(xaxis_title="תאריך", yaxis_title="₪")
                     st.plotly_chart(fig, use_container_width=True)
                 except Exception:
-                    st.info("אין מספיק נתונים לגרף")
+                    render_empty_state("📊", "אין מספיק נתונים לגרף")
             else:
-                st.info("אין פעולות בתקופה זו")
+                render_empty_state("📅", "אין פעולות בתקופה זו", "נסה לבחור ‘כל הפעולות’")
         else:
-            st.info("עדיין אין פעולות בחשבון")
+            render_empty_state("💳", "עדיין אין פעולות", "הפעולות שלך יופיעו כאן לאחר הביצוע הראשון")
 
     with col_feed:
         st.markdown('<div class="section-title">⚡ 5 פעולות אחרונות</div>', unsafe_allow_html=True)
@@ -868,7 +901,7 @@ def render_dashboard(u, is_admin, df_users, df_actions):
             for _, row in feed.tail(5).iloc[::-1].iterrows():
                 render_smart_card(row)
         else:
-            st.info("אין פעולות להצגה")
+            render_empty_state("📥", "אין פעולות להצגה")
 
 
 # ============================
@@ -888,7 +921,8 @@ def render_history(u, is_admin, df_users, df_actions):
         my_act = process_user_actions(df_actions, uid)
 
     if my_act.empty:
-        st.info("אין פעולות להצגה"); return
+        render_empty_state("📋", "אין פעולות להצגה", "כאשר יבוצעו פעולות הן יופיעו כאן")
+        return
 
     for col in ["תאריך","שעה","סכום","סטטוס","כיוון","תיאור","שם מקור","שם יעד"]:
         if col not in my_act.columns: my_act[col] = ""
@@ -906,10 +940,12 @@ def render_history(u, is_admin, df_users, df_actions):
                 pie_df = debits.groupby("שם יעד")["סכום_num"].sum().reset_index()
                 pie_df.columns = ["שם","סכום"]
                 pie_df = pie_df[pie_df["שם"].str.strip()!=""]
-                fig_pie = px.pie(pie_df, names="שם", values="סכום", title="פילוח הוצאות לפי יעד", hole=0.35)
-                fig_pie.update_layout(height=300, margin=dict(l=0,r=0,t=30,b=0))
+                fig_pie = px.pie(pie_df, names="שם", values="סכום",
+                                 title="פילוח הוצאות לפי יעד", hole=0.4,
+                                 color_discrete_sequence=px.colors.sequential.Blues_r)
+                style_fig(fig_pie, height=300)
                 st.plotly_chart(fig_pie, use_container_width=True)
-            else: st.info("אין נתוני הוצאות")
+            else: render_empty_state("🦷", "אין נתוני הוצאות", "כאשר תבצע תשלומים, הגרף יופיע כאן")
         except Exception as e: st.warning(f"שגיאה: {e}")
 
     with tab_line:
@@ -919,17 +955,22 @@ def render_history(u, is_admin, df_users, df_actions):
                 line_df["סכום נטו"] = pd.to_numeric(line_df["סכום נטו"], errors="coerce").fillna(0)
                 line_df = line_df.sort_values("תאריך")
                 line_df["יתרה מצטברת"] = line_df["סכום נטו"].cumsum()
-                fig_l = px.line(line_df, x="תאריך", y="יתרה מצטברת", title="מגמת יתרה",
+                fig_l = px.line(line_df, x="תאריך", y="יתרה מצטברת",
                                 markers=True, color_discrete_sequence=["#0f3460"])
-                fig_l.update_layout(height=300, margin=dict(l=0,r=0,t=30,b=0), xaxis=dict(tickangle=-45))
+                style_fig(fig_l, height=300)
+                fig_l.update_layout(yaxis_title="₪")
                 st.plotly_chart(fig_l, use_container_width=True)
-            else: st.info("אין מספיק נתונים")
+            else: render_empty_state("📉", "אין מספיק נתונים")
         except Exception as e: st.warning(f"שגיאה: {e}")
 
     st.divider()
 
     # סינון
     st.markdown('<div class="section-title">🔍 סינון וחיפוש</div>', unsafe_allow_html=True)
+    st.markdown("""
+    <style>.filter-card{background:white;border-radius:16px;padding:20px 24px 8px;
+    box-shadow:0 2px 12px rgba(0,0,0,0.06);margin-bottom:16px}</style>
+    <div class="filter-card">""", unsafe_allow_html=True)
     fc1,fc2,fc3 = st.columns([2,2,2])
     with fc1: search_text = st.text_input("🔎 חיפוש חופשי","", key="hist_search")
     with fc2:
@@ -968,6 +1009,7 @@ def render_history(u, is_admin, df_users, df_actions):
         if conds: filtered = filtered[functools.reduce(lambda a,b: a|b, conds)]
 
     filtered = filtered[(filtered["סכום_num"].abs()>=min_amt) & (filtered["סכום_num"].abs()<=max_amt)]
+    st.markdown('</div>', unsafe_allow_html=True)  # close filter-card
 
     # FIX #5 – reset page on filter change
     fkey = f"{search_text}|{date_filter}|{status_filter}|{min_amt}|{max_amt}"
@@ -975,15 +1017,24 @@ def render_history(u, is_admin, df_users, df_actions):
         st.session_state._hist_fkey = fkey
         st.session_state.hist_page  = 0
 
-    st.caption(f"נמצאו **{len(filtered)}** פעולות")
+    # results bar
+    st.markdown(f"""
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                background:white;border-radius:12px;padding:10px 18px;
+                box-shadow:0 1px 6px rgba(0,0,0,0.05);margin-bottom:10px">
+        <span style="font-size:0.85rem;color:#475569;font-weight:600">
+            📋 נמצאו <span style="color:#0f3460;font-size:1rem">{len(filtered)}</span> פעולות
+        </span>
+        <span style="font-size:0.75rem;color:#94a3b8">עמוד {st.session_state.get('hist_page',0)+1}</span>
+    </div>""", unsafe_allow_html=True)
 
-    # ייצוא – FIX #10
+    # ייצוא
     ex1,ex2,_ = st.columns([1,1,4])
     with ex1:
         try:
             buf = BytesIO()
             filtered.drop(columns=["סכום_num"],errors="ignore").to_excel(buf,index=False,engine="openpyxl")
-            st.download_button("📥 Excel", data=buf.getvalue(), file_name="shiabudefon.xlsx",
+            st.download_button("📥 ייצוא Excel", data=buf.getvalue(), file_name="shiabudefon.xlsx",
                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         except Exception: st.warning("התקן openpyxl")
     with ex2:
@@ -1077,6 +1128,20 @@ def render_chat_tab(u, is_admin, df_users, df_actions):
     uid = str(u.get("מספר משתמש",""))
     if "messages" not in st.session_state: st.session_state.messages = []
 
+    if not st.session_state.messages:
+        st.markdown("""
+        <div style="background:linear-gradient(135deg,#eff6ff,#dbeafe);border-radius:18px;
+                    padding:26px 28px;margin-bottom:20px;border:1px solid #bfdbfe;direction:rtl">
+            <div style="font-size:1.6rem;margin-bottom:8px">🤖</div>
+            <div style="font-weight:700;color:#1e3a8a;font-size:1rem;margin-bottom:6px">בוט שיעבודא פון AI</div>
+            <div style="color:#3b82f6;font-size:0.86rem;line-height:1.7">
+                שאל אותי כל שאלה על הפעולות שלך:
+                <span style="background:#dbeafe;border-radius:8px;padding:2px 9px;margin:3px;display:inline-block">סכם הוצאות החודש</span>
+                <span style="background:#dbeafe;border-radius:8px;padding:2px 9px;margin:3px;display:inline-block">מי קיבל הכי הרבה?</span>
+                <span style="background:#dbeafe;border-radius:8px;padding:2px 9px;margin:3px;display:inline-block">תסכם לי את הפעולות</span>
+            </div>
+        </div>""", unsafe_allow_html=True)
+
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.write(msg["content"])
@@ -1119,17 +1184,36 @@ def render_chat_tab(u, is_admin, df_users, df_actions):
 # Admin
 # ============================
 def render_admin(df_users, df_actions):
-    st.markdown("## 🛠️ לוח בקרה – מנהל מערכת")
     try:    total_vol = pd.to_numeric(df_actions["סכום"], errors="coerce").sum()
     except: total_vol = 0
-    c1,c2,c3 = st.columns(3)
-    c1.metric("👥 משתמשים", len(df_users))
-    c2.metric("📋 פעולות",  len(df_actions))
-    c3.metric("💸 מחזור",   f"₪{total_vol:,.0f}")
-    st.divider()
+    try:    avg_tx = total_vol / max(len(df_actions), 1)
+    except: avg_tx = 0
+
+    st.markdown('<div class="section-title">🛠️ לוח בקרה – מנהל מערכת</div>', unsafe_allow_html=True)
+    c1,c2,c3,c4 = st.columns(4)
+    with c1:
+        st.markdown(f'<div class="mc-wrap mc-blue"><div class="mc-icon">👥</div><div class="mc-label">משתמשים רשומים</div><div class="mc-value">{len(df_users)}</div><div class="mc-sub">סך משתמשים</div></div>', unsafe_allow_html=True)
+    with c2:
+        st.markdown(f'<div class="mc-wrap mc-green"><div class="mc-icon">📋</div><div class="mc-label">סך פעולות</div><div class="mc-value">{len(df_actions)}</div><div class="mc-sub">פעולות שבוצעו</div></div>', unsafe_allow_html=True)
+    with c3:
+        st.markdown(f'<div class="mc-wrap mc-purple"><div class="mc-icon">💸</div><div class="mc-label">מחזור כללי</div><div class="mc-value">₪{total_vol:,.0f}</div><div class="mc-sub">סך כל העברות</div></div>', unsafe_allow_html=True)
+    with c4:
+        st.markdown(f'<div class="mc-wrap" style="background:linear-gradient(135deg,#b45309,#d97706);box-shadow:0 6px 20px rgba(180,83,9,0.35)"><div class="mc-icon">📊</div><div class="mc-label">עסקה ממוצעת</div><div class="mc-value">₪{avg_tx:,.0f}</div><div class="mc-sub">לפעולה</div></div>', unsafe_allow_html=True)
+
+    st.markdown("")
+    st.markdown("""
+    <style>
+    [data-testid="stDataFrame"] { border-radius: 14px !important; overflow: hidden !important;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.06) !important; }
+    </style>""", unsafe_allow_html=True)
+
     at1,at2 = st.tabs(["📋 כל הפעולות","👥 משתמשים"])
-    with at1: st.dataframe(df_actions.tail(50).iloc[::-1], hide_index=True, use_container_width=True)
-    with at2: st.dataframe(df_users, hide_index=True, use_container_width=True)
+    with at1:
+        st.markdown(f'<div style="color:#64748b;font-size:0.8rem;margin-bottom:8px">50 פעולות אחרונות מתוך {len(df_actions)}</div>', unsafe_allow_html=True)
+        st.dataframe(df_actions.tail(50).iloc[::-1], hide_index=True, use_container_width=True)
+    with at2:
+        st.markdown(f'<div style="color:#64748b;font-size:0.8rem;margin-bottom:8px">{len(df_users)} משתמשים רשומים</div>', unsafe_allow_html=True)
+        st.dataframe(df_users, hide_index=True, use_container_width=True)
 
 
 # ============================
@@ -1184,6 +1268,13 @@ def main():
     with tab_objs[3]: render_chat_tab(u, is_admin, df_users, df_actions)
     if is_admin:
         with tab_objs[4]: render_admin(df_users, df_actions)
+
+    # Footer
+    st.markdown("""
+    <div style="text-align:center;padding:28px 0 12px;color:#cbd5e1;font-size:0.78rem;border-top:1px solid #e2e8f0;margin-top:24px">
+        💰 <b style="color:#94a3b8">שיעבודא פון</b> &nbsp;&middot;&nbsp; מערכת פיננסית מתקדמת &nbsp;&middot;&nbsp;
+        כל הזכויות שמורות &copy; {datetime.now().year}
+    </div>""", unsafe_allow_html=True)
 
 
 main()
