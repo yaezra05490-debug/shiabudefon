@@ -181,20 +181,67 @@ def get_client():
     secret_dir = "/etc/secrets"
     required_keys = ["type","project_id","private_key_id","private_key","client_email",
                      "client_id","auth_uri","token_uri","auth_provider_x509_cert_url","client_x509_cert_url"]
-    creds_dict = {}
-    for key in required_keys:
-        path = os.path.join(secret_dir, key)
-        if os.path.exists(path):
-            with open(path,"r") as f:
-                creds_dict[key] = f.read().strip()
-                if key == "private_key":
-                    creds_dict[key] = creds_dict[key].replace("\\n","\n").replace('"','')
-    if "private_key" in creds_dict:
+    errors = []
+
+    # ── שיטה 1: st.secrets["gcp_service_account"] (Streamlit Cloud / Render secrets.toml) ──
+    try:
+        raw = st.secrets["gcp_service_account"]
+        creds_dict = dict(raw)
+        if "private_key" in creds_dict:
+            creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
         return gspread.authorize(Credentials.from_service_account_info(creds_dict, scopes=scopes))
+    except (KeyError, FileNotFoundError):
+        errors.append("st.secrets['gcp_service_account'] – לא נמצא")
+    except Exception as e:
+        errors.append(f"st.secrets['gcp_service_account'] – שגיאה: {e}")
+
+    # ── שיטה 2: st.secrets["google_credentials"] (מפתח חלופי) ──
+    try:
+        import json as _json
+        raw_str = st.secrets["google_credentials"]
+        creds_dict = _json.loads(raw_str) if isinstance(raw_str, str) else dict(raw_str)
+        if "private_key" in creds_dict:
+            creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+        return gspread.authorize(Credentials.from_service_account_info(creds_dict, scopes=scopes))
+    except (KeyError, FileNotFoundError):
+        errors.append("st.secrets['google_credentials'] – לא נמצא")
+    except Exception as e:
+        errors.append(f"st.secrets['google_credentials'] – שגיאה: {e}")
+
+    # ── שיטה 3: קבצים בודדים תחת /etc/secrets/{key} (Render Secret Files) ──
+    try:
+        creds_dict = {}
+        for key in required_keys:
+            path = os.path.join(secret_dir, key)
+            if os.path.exists(path):
+                with open(path, "r") as f:
+                    val = f.read().strip()
+                    if key == "private_key":
+                        val = val.replace("\\n", "\n").replace('"', '')
+                    creds_dict[key] = val
+        if "private_key" in creds_dict and "client_email" in creds_dict:
+            return gspread.authorize(Credentials.from_service_account_info(creds_dict, scopes=scopes))
+        else:
+            errors.append(f"קבצים בודדים /etc/secrets/ – חסרים מפתחות ({', '.join(k for k in required_keys if k not in creds_dict)})")
+    except Exception as e:
+        errors.append(f"קבצים בודדים /etc/secrets/ – שגיאה: {e}")
+
+    # ── שיטה 4: קובץ service_account.json ──
     json_path = os.path.join(secret_dir, "service_account.json")
     if os.path.exists(json_path):
-        return gspread.authorize(Credentials.from_service_account_file(json_path, scopes=scopes))
-    st.error("תקלה בחיבור לשיטס"); st.stop()
+        try:
+            return gspread.authorize(Credentials.from_service_account_file(json_path, scopes=scopes))
+        except Exception as e:
+            errors.append(f"service_account.json – שגיאה: {e}")
+    else:
+        errors.append(f"service_account.json – לא נמצא ב-{json_path}")
+
+    # ── כישלון מלא ──
+    st.error("❌ **תקלה בחיבור ל-Google Sheets** – לא נמצאו קרדנשיאלים תקינים.\n\n" +
+             "\n\n".join(f"• {e}" for e in errors) +
+             "\n\n**כיצד לתקן:** הוסף ב-Render → Environment → Secret Files את הקובץ `service_account.json`, "
+             "או הגדר ב-Render → Environment Variables → `gcp_service_account` עם תוכן ה-JSON.")
+    st.stop()
 
 
 @st.cache_resource
