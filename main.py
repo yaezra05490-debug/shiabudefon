@@ -502,6 +502,8 @@ def inject_css():
         z-index: 99999; padding: 60px 0 20px;
         box-shadow: -4px 0 24px rgba(0,0,0,0.4);
         overflow-y: auto; direction: rtl;
+        transform: translateX(240px);
+        transition: transform 0.3s ease;
     }
     .mobile-nav-drawer a {
         display: block; padding: 14px 24px; color: #ccd6f6;
@@ -870,17 +872,19 @@ def render_header(current_page: str):
         st.markdown(
             '<div style="background:linear-gradient(135deg,#0d1b2a,#0f3460);padding:0 28px;margin:-0.5rem -1rem 0;">',
             unsafe_allow_html=True)
-        c_logo, c_nav, c_auth = st.columns([2, 6, 2])
+        c_logo, c_nav, c_auth, c_hamburger = st.columns([2, 6, 2, 1])
         with c_logo:
             st.markdown('<div class="header-logo">💰 שיעבודא פון<span>|</span></div>',
                         unsafe_allow_html=True)
         with c_nav:
+            st.markdown('<div class="nav-desktop" style="display:flex;gap:4px;align-items:center">', unsafe_allow_html=True)
             nav_cols = st.columns(len(pages))
             for i, (page_key, label) in enumerate(pages):
                 with nav_cols[i]:
                     t = "primary" if current_page == page_key else "secondary"
                     if st.button(label, key=f"nav_{page_key}", type=t, use_container_width=True):
                         st.session_state.page = page_key; st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
         with c_auth:
             if st.session_state.get("authenticated"):
                 if st.button("🚪 יציאה", type="secondary", use_container_width=True):
@@ -889,6 +893,35 @@ def render_header(current_page: str):
             else:
                 if st.button("🔑 כניסה", type="primary", use_container_width=True):
                     st.session_state.page = "login"; st.rerun()
+        with c_hamburger:
+            st.markdown("""
+            <button class="hamburger-btn" onclick="openDrawer()" aria-label="תפריט">
+                <span></span><span></span><span></span>
+            </button>
+            <div class="mobile-nav-overlay" id="nav-overlay" onclick="closeDrawer()"></div>
+            <div class="mobile-nav-drawer" id="nav-drawer">
+                <button onclick="closeDrawer()" style="position:absolute;top:16px;left:16px;background:none;border:none;color:#e8b84b;font-size:1.4rem;cursor:pointer">✕</button>
+                <a href="?page=app">🏠 אזור אישי</a>
+                <a href="?page=about">קצת עלינו</a>
+                <a href="?page=contact">צור קשר</a>
+                <a href="?page=terms">תקנון</a>
+            </div>
+            <script>
+            function openDrawer(){
+                document.getElementById('nav-drawer').style.transform='translateX(0)';
+                document.getElementById('nav-overlay').style.display='block';
+            }
+            function closeDrawer(){
+                document.getElementById('nav-drawer').style.transform='translateX(240px)';
+                document.getElementById('nav-overlay').style.display='none';
+            }
+            // Handle ?page= query param from drawer links
+            (function(){
+                var p=new URLSearchParams(window.location.search).get('page');
+                if(p) window.history.replaceState({},'',window.location.pathname);
+            })();
+            </script>
+            """, unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
@@ -1405,9 +1438,11 @@ def render_personal(u, df_users):
     st.markdown('<div class="section-title">👤 החשבון שלי – פרטים מזהים</div>', unsafe_allow_html=True)
     raw_pwd = str(user_data.get("סיסמה", "—"))
     masked_pwd = ("*" * len(raw_pwd)) if raw_pwd not in ("—", "", "nan") else "—"
+    show_p = st.session_state.get("_show_personal_pwd", False)
+    pwd_display = raw_pwd if show_p else masked_pwd
     fields = [("שם משתמש","שם משתמש",None),("מספר משתמש","מספר משתמש",None),
               ("תעודת זהות","תעודת זהות",None),("כתובת","כתובת",None),
-              ("סיסמה נוכחית","סיסמה",masked_pwd)]
+              ("סיסמה נוכחית","סיסמה",pwd_display)]
     rows_html = "".join(
         f'<div class="detail-row"><span class="detail-label">{lbl}:</span>'
         f'<span class="detail-value">{override if override is not None else user_data.get(key,"—")}</span></div>'
@@ -1416,6 +1451,10 @@ def render_personal(u, df_users):
     st.markdown(f"""<div class="detail-block">{rows_html}
         <div class="readonly-note">⚠️ המידע מוצג לקריאה בלבד. לעדכון פרטים, חייג למערכת הטלפונית.</div>
     </div>""", unsafe_allow_html=True)
+    eye_lbl = "🙈 הסתר סיסמה" if show_p else "👁 הצג סיסמה"
+    if st.button(eye_lbl, key="toggle_personal_pwd"):
+        st.session_state._show_personal_pwd = not show_p
+        st.rerun()
 
     st.markdown('<div class="section-title">📱 רשימת צינתוקים</div>', unsafe_allow_html=True)
     raw    = user_data.get("צינתוקים", user_data.get("טלפונים",""))
