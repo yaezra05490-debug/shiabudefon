@@ -229,6 +229,8 @@ def inject_css():
     }
     .greeting-name { font-size: 1.3rem; font-weight: 700; }
     .greeting-uid  { font-size: 0.82rem; opacity: 0.75; margin-top: 2px; }
+    .greeting-last { font-size: 0.75rem; opacity: 0.8; margin-top: 6px; background: rgba(255,255,255,0.12); border-radius: 8px; padding: 3px 10px; display: inline-block; }
+    .greeting-last b { font-weight: 700; opacity: 1; }
     .greeting-badge {
         background: rgba(255,255,255,0.15);
         border-radius: 12px;
@@ -699,15 +701,28 @@ def process_user_actions(df_actions: pd.DataFrame, user_id: str) -> pd.DataFrame
     my   = df[mask].copy()
     if my.empty: return pd.DataFrame()
 
+    def _s(v):
+        s = str(v).strip()
+        return s if s not in ('', 'nan', 'None', '0') else ''
+
     def enrich(row):
         is_sender = str(row["מספר משתמש מקור"]) == uid
         try:    amount = float(row.get("סכום",0))
         except: amount = 0
         direction = "חובה" if is_sender else "זכות"
         net  = -amount if is_sender else amount
-        desc = (f"העברה אל {row.get('שם יעד','')} ({row.get('מספר משתמש יעד','')})"
-                if is_sender
-                else f"התקבל מ-{row.get('שם מקור','')} ({row.get('מספר משתמש מקור','')})")
+        if is_sender:
+            name, uid_t = _s(row.get('שם יעד','')), _s(row.get('מספר משתמש יעד',''))
+            if name and uid_t:   desc = f"העברה אל {name} ({uid_t})"
+            elif name:           desc = f"העברה אל {name}"
+            elif uid_t:          desc = f"העברה אל משתמש {uid_t}"
+            else:                desc = "העברה יוצאת"
+        else:
+            name, uid_s = _s(row.get('שם מקור','')), _s(row.get('מספר משתמש מקור',''))
+            if name and uid_s:   desc = f"התקבל מ-{name} ({uid_s})"
+            elif name:           desc = f"התקבל מ-{name}"
+            elif uid_s:          desc = f"התקבל ממשתמש {uid_s}"
+            else:                desc = "קבלת העברה"
         return pd.Series({"כיוון": direction, "סכום נטו": net, "תיאור": desc})
 
     enriched = my.apply(enrich, axis=1)
@@ -726,7 +741,7 @@ def get_user_balance(df_users: pd.DataFrame, user_id: str) -> float:
 # ============================
 # FIX #8: כרטיסייה חכמה
 # ============================
-def render_smart_card(row: pd.Series):
+def render_smart_card(row: pd.Series, highlight: str = ""):
     status    = str(row.get("סטטוס","מוצלחת")).strip()
     direction = str(row.get("כיוון","")).strip()
 
@@ -754,6 +769,10 @@ def render_smart_card(row: pd.Series):
     uid_part = re.search(r'\(([^)]+)\)', raw_desc)
     uid_badge = f'<span style="direction:ltr;background:#f1f5f9;border-radius:6px;padding:1px 7px;font-size:0.7rem;color:#64748b;font-family:monospace;margin-right:6px">{uid_part.group(1)}</span>' if uid_part else ""
     clean_desc = re.sub(r'\s*\([^)]+\)', '', raw_desc).strip()
+    if highlight.strip():
+        hl = re.escape(highlight.strip())
+        clean_desc = re.sub(f'({hl})', r'<mark style="background:#fef9c3;padding:0 2px;border-radius:3px">\1</mark>',
+                            clean_desc, flags=re.IGNORECASE)
 
     after_raw = row.get("יתרה לאחר פעולה", row.get("יתרה", ""))
     date_val  = str(row.get("תאריך", ""))
@@ -916,18 +935,37 @@ def _do_login(uid: str, pwd: str):
 def render_dashboard(u, is_admin, df_users, df_actions):
     uid        = str(u.get("מספר משתמש",""))
     balance    = get_user_balance(df_users, uid)
-    sync_time  = datetime.now().strftime("%H:%M")
+    sync_time  = st.session_state.get("_last_sync", datetime.now().strftime("%H:%M:%S"))
     my_act     = process_user_actions(df_actions, uid)
 
+    # פעולה אחרונה לתצוגה בברכה
+    last_act_html = ""
+    if not my_act.empty:
+        try:
+            lr = my_act.iloc[-1]
+            la_icon = "📥" if str(lr.get("כיוון","")) == "זכות" else "📤"
+            la_amt  = f"₪{abs(float(lr.get('סכום',0))):,.0f}"
+            la_date = str(lr.get("תאריך",""))
+            last_act_html = f'<div class="greeting-last">{la_icon} פעולה אחרונה: <b>{la_amt}</b> · {la_date}</div>'
+        except: pass
+
     admin_badge = "<span style='background:rgba(255,255,255,0.15);border-radius:8px;padding:3px 10px;font-size:0.75rem;margin-right:8px'>מנהל מערכת</span>" if is_admin else ""
-    st.markdown(f"""
-    <div class="greeting-bar">
-        <div>
-            <div class="greeting-name">שלום, {u.get('שם משתמש','')} 👋 {admin_badge}</div>
-            <div class="greeting-uid">מספר משתמש: {uid} · עודכן בשעה {sync_time}</div>
-        </div>
-        <div class="greeting-badge">💰 מערכת פיננסית</div>
-    </div>""", unsafe_allow_html=True)
+    gr1, gr2 = st.columns([5, 1])
+    with gr1:
+        st.markdown(f"""
+        <div class="greeting-bar">
+            <div>
+                <div class="greeting-name">שלום, {u.get('שם משתמש','')} 👋 {admin_badge}</div>
+                <div class="greeting-uid">מספר משתמש: {uid} · עודכן בשעה {sync_time}</div>
+                {last_act_html}
+            </div>
+            <div class="greeting-badge">💰 מערכת פיננסית</div>
+        </div>""", unsafe_allow_html=True)
+    with gr2:
+        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+        if st.button("🔄 רענן", key="dash_refresh", use_container_width=True, help="טען מחדש נתונים עדכניים מ-Sheets"):
+            st.cache_data.clear()
+            st.rerun()
 
     # FIX #4 – חישוב מחזור נכון
     try:    total_volume = pd.to_numeric(df_actions["סכום"], errors="coerce").sum()
@@ -1124,22 +1162,40 @@ def render_history(u, is_admin, df_users, df_actions):
     filtered = filtered[(filtered["סכום_num"].abs()>=min_amt) & (filtered["סכום_num"].abs()<=max_amt)]
     st.markdown('</div>', unsafe_allow_html=True)  # close filter-card
 
-    # FIX #5 – reset page on filter change
-    fkey = f"{search_text}|{date_filter}|{status_filter}|{min_amt}|{max_amt}"
+    # מיון
+    sort_options = ["תאריך ↓ (חדש ראשון)","תאריך ↑ (ישן ראשון)","סכום ↓ (גדול ראשון)","סכום ↑ (קטן ראשון)","זכויות קודם","חובות קודם"]
+    res1, res2 = st.columns([3, 1])
+    with res1:
+        st.markdown(f"""
+        <div style="background:white;border-radius:12px;padding:10px 18px;
+                    box-shadow:0 1px 6px rgba(0,0,0,0.05);margin-bottom:4px;height:42px;
+                    display:flex;align-items:center">
+            <span style="font-size:0.85rem;color:#475569;font-weight:600">
+                📋 נמצאו <span style="color:#0f3460;font-size:1rem">{len(filtered)}</span> פעולות
+            </span>
+        </div>""", unsafe_allow_html=True)
+    with res2:
+        sort_opt = st.selectbox("מיון", sort_options, key="hist_sort", label_visibility="collapsed")
+
+    # החלת מיון
+    if "תאריך ↑" in sort_opt:
+        filtered = filtered.sort_values("תאריך", ascending=True)
+    elif "תאריך ↓" in sort_opt:
+        filtered = filtered.sort_values("תאריך", ascending=False)
+    elif "סכום ↓" in sort_opt:
+        filtered = filtered.assign(_abs=filtered["סכום_num"].abs()).sort_values("_abs", ascending=False).drop(columns="_abs")
+    elif "סכום ↑" in sort_opt:
+        filtered = filtered.assign(_abs=filtered["סכום_num"].abs()).sort_values("_abs", ascending=True).drop(columns="_abs")
+    elif "זכויות" in sort_opt:
+        filtered = filtered.sort_values("כיוון", ascending=False) if "כיוון" in filtered.columns else filtered
+    elif "חובות" in sort_opt:
+        filtered = filtered.sort_values("כיוון", ascending=True) if "כיוון" in filtered.columns else filtered
+
+    # FIX #5 – reset page on filter/sort change
+    fkey = f"{search_text}|{date_filter}|{status_filter}|{min_amt}|{max_amt}|{sort_opt}"
     if st.session_state.get("_hist_fkey") != fkey:
         st.session_state._hist_fkey = fkey
         st.session_state.hist_page  = 0
-
-    # results bar
-    st.markdown(f"""
-    <div style="display:flex;align-items:center;justify-content:space-between;
-                background:white;border-radius:12px;padding:10px 18px;
-                box-shadow:0 1px 6px rgba(0,0,0,0.05);margin-bottom:10px">
-        <span style="font-size:0.85rem;color:#475569;font-weight:600">
-            📋 נמצאו <span style="color:#0f3460;font-size:1rem">{len(filtered)}</span> פעולות
-        </span>
-        <span style="font-size:0.75rem;color:#94a3b8">עמוד {st.session_state.get('hist_page',0)+1}</span>
-    </div>""", unsafe_allow_html=True)
 
     # ייצוא
     ex1,ex2,_ = st.columns([1,1,4])
@@ -1236,7 +1292,7 @@ def render_history(u, is_admin, df_users, df_actions):
             </div>""", unsafe_allow_html=True)
 
     for _,row in page_df.iterrows():
-        render_smart_card(row)
+        render_smart_card(row, highlight=search_text)
 
 
 # ============================
@@ -1409,6 +1465,7 @@ def main():
     # FIX #13 – spinner טעינה ראשונית
     with st.spinner("⏳ טוען נתונים..."):
         df_users, df_actions, _ = get_all_data()
+    st.session_state._last_sync = datetime.now().strftime("%H:%M:%S")
 
     # FIX #6 – כפתור צף אמיתי
     inject_chat_fab_js()
