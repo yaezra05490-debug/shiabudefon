@@ -656,6 +656,21 @@ def get_api_keys():
     return keys
 
 
+@st.cache_data(ttl=3600)
+def _get_gemini_model_name():
+    """Cache the best Gemini model name — queried once per hour."""
+    try:
+        best = "gemini-pro"
+        for m in genai.list_models():
+            if "generateContent" in m.supported_generation_methods:
+                best = m.name
+                if "flash" in m.name.lower():
+                    break
+        return best
+    except Exception:
+        return "gemini-pro"
+
+
 @st.cache_data(ttl=600)
 def get_all_data():
     """FIX #13 – cache 10 דקות."""
@@ -1111,8 +1126,8 @@ def render_history(u, is_admin, df_users, df_actions):
                 style_fig(fig_l, height=300)
                 fig_l.update_layout(yaxis_title="₪")
                 st.plotly_chart(fig_l, use_container_width=True)
-            else: render_empty_state("📉", "אין מספיק נתונים")
-        except Exception as e: st.warning(f"שגיאה: {e}")
+            else: render_empty_state("📉", "אין מספיק נתונים", "נדרשות לפחות 2 פעולות עם תאריכים")
+        except Exception: render_empty_state("📉", "לא היה ניתן לטעון את הגרף")
 
     st.divider()
 
@@ -1135,8 +1150,8 @@ def render_history(u, is_admin, df_users, df_actions):
         status_filter = st.multiselect("סטטוס",["הכל","זכות","חובה","כושלות","פעולות מנהל"],
                                        default=["הכל"], key="hist_status")
     fc4,fc5 = st.columns(2)
-    with fc4: min_amt = st.number_input("סכום מינימלי ₪", value=0.0,      step=10.0,  key="hist_min")
-    with fc5: max_amt = st.number_input("סכום מקסימלי ₪", value=999999.0, step=100.0, key="hist_max")
+    with fc4: min_amt = st.number_input("סכום מינימלי ₪", value=0.0, step=10.0, key="hist_min")
+    with fc5: max_amt = st.number_input("סכום מקסימלי ₪ (ביטול = אין גבול)", value=0.0, step=100.0, key="hist_max", help="0 = ללא גבול")
 
     # החלת סינונים
     filtered = my_act.copy()
@@ -1159,7 +1174,7 @@ def render_history(u, is_admin, df_users, df_actions):
         if "פעולות מנהל" in status_filter: conds.append(filtered["סטטוס"].astype(str).str.contains("מנהל",na=False))
         if conds: filtered = filtered[functools.reduce(lambda a,b: a|b, conds)]
 
-    filtered = filtered[(filtered["סכום_num"].abs()>=min_amt) & (filtered["סכום_num"].abs()<=max_amt)]
+    filtered = filtered[(filtered["סכום_num"].abs()>=min_amt) & (max_amt == 0.0 or filtered["סכום_num"].abs()<=max_amt)]
     st.markdown('</div>', unsafe_allow_html=True)  # close filter-card
 
     # מיון
@@ -1356,7 +1371,9 @@ def render_chat_tab(u, is_admin, df_users, df_actions):
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.write(msg["content"])
-            if msg.get("tokens"): st.caption(f"🪙 {msg['tokens']}")
+            # token count shown to admins only
+            if msg.get("tokens") and is_admin:
+                st.caption(f"🪙 {msg['tokens']}")
 
     if prompt := st.chat_input("שאל אותי (לדוגמה: תסכם לי הוצאות)..."):
         st.session_state.messages.append({"role":"user","content":prompt})
@@ -1364,21 +1381,17 @@ def render_chat_tab(u, is_admin, df_users, df_actions):
         with st.chat_message("assistant"):
             with st.spinner("חושב..."):
                 if is_admin:
-                    context = f"משתמשים:\n{df_users.to_csv()}\nפעולות:\n{df_actions.to_csv()}"
+                    context = f"פעולות:\n{df_actions.to_csv()}\nמשתמשים (ללא סיסמאות):\n{df_users.drop(columns=['סיסמה'], errors='ignore').to_csv()}"
                 else:
                     my_act   = process_user_actions(df_actions, uid)
-                    curr_row = df_users[df_users["מספר משתמש"].astype(str)==uid]
-                    context  = f"פרטים:\n{curr_row.to_csv()}\nפעולות:\n{my_act.to_csv()}"
+                    curr_row = df_users[df_users["מספר משתמש"].astype(str)==uid].drop(columns=["סיסמה"], errors="ignore")
+                    context  = f"פרטים:\n{curr_row.to_csv()}\nפעולות:\n{my_act.drop(columns=['סכום_num'], errors='ignore').to_csv()}"
                 reply = "מצטער, לא הצלחתי לקבל תשובה."; tokens_info = ""
+                model_name = _get_gemini_model_name()
                 for key in get_api_keys():
                     try:
                         genai.configure(api_key=key)
-                        valid_model = "gemini-pro"
-                        for m in genai.list_models():
-                            if "generateContent" in m.supported_generation_methods:
-                                valid_model = m.name
-                                if "flash" in m.name.lower(): break
-                        res = genai.GenerativeModel(valid_model).generate_content(
+                        res = genai.GenerativeModel(model_name).generate_content(
                             f"{SYSTEM_MANUAL}\n{context}\nשאלה: {prompt}",
                             generation_config=genai.types.GenerationConfig(max_output_tokens=400))
                         reply = res.text
@@ -1387,7 +1400,7 @@ def render_chat_tab(u, is_admin, df_users, df_actions):
                         break
                     except Exception: continue
                 st.write(reply)
-                if tokens_info: st.caption(f"🪙 {tokens_info}")
+                if tokens_info and is_admin: st.caption(f"🪙 {tokens_info}")
         st.session_state.messages.append({"role":"assistant","content":reply,"tokens":tokens_info})
 
 
