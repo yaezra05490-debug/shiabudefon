@@ -483,9 +483,12 @@ def inject_css():
         .block-container { padding-left: 8px !important; padding-right: 8px !important; }
         .mc-value { font-size: 1.5rem !important; }
         .greeting-bar { flex-direction: column; gap: 10px; text-align: center; }
-        /* hamburger: hide desktop nav, show hamburger */
-        .nav-desktop { display: none !important; }
+        /* hamburger: hide desktop nav column, show hamburger */
         .hamburger-btn { display: flex !important; }
+        /* hide the 2nd column in header (nav buttons) */
+        [data-testid="stHorizontalBlock"]:has(.nav-desktop-marker) > [data-testid="column"]:nth-child(2) > div {
+            display: none !important;
+        }
     }
     @media (min-width: 769px) {
         .hamburger-btn { display: none !important; }
@@ -877,14 +880,13 @@ def render_header(current_page: str):
             st.markdown('<div class="header-logo">💰 שיעבודא פון<span>|</span></div>',
                         unsafe_allow_html=True)
         with c_nav:
-            st.markdown('<div class="nav-desktop" style="display:flex;gap:4px;align-items:center">', unsafe_allow_html=True)
+            st.markdown('<span class="nav-desktop-marker"></span>', unsafe_allow_html=True)
             nav_cols = st.columns(len(pages))
             for i, (page_key, label) in enumerate(pages):
                 with nav_cols[i]:
                     t = "primary" if current_page == page_key else "secondary"
                     if st.button(label, key=f"nav_{page_key}", type=t, use_container_width=True):
                         st.session_state.page = page_key; st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
         with c_auth:
             if st.session_state.get("authenticated"):
                 if st.button("🚪 יציאה", type="secondary", use_container_width=True):
@@ -1579,6 +1581,15 @@ def main():
 
     if "page"          not in st.session_state: st.session_state.page = "login"
     if "authenticated" not in st.session_state: st.session_state.authenticated = False
+
+    # Handle ?page= query params from hamburger menu links
+    try:
+        qp = st.query_params.get("page", None)
+        if qp and qp in ("app", "about", "contact", "terms", "login"):
+            st.session_state.page = qp
+            st.query_params.clear()
+    except Exception:
+        pass
 
     # Session timeout check
     if st.session_state.authenticated:
