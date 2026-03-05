@@ -474,7 +474,7 @@ def inject_css():
     /* ── Caption / small text ── */
     .stCaption, small { color: #94a3b8 !important; font-size: 0.78rem !important; }
 
-    /* ── Mobile ── */
+    /* ── Mobile responsive ── */
     @media (max-width: 768px) {
         .smart-card { flex-direction: column; align-items: flex-start; }
         .card-side  { text-align: right; min-width: unset; }
@@ -483,6 +483,36 @@ def inject_css():
         .block-container { padding-left: 8px !important; padding-right: 8px !important; }
         .mc-value { font-size: 1.5rem !important; }
         .greeting-bar { flex-direction: column; gap: 10px; text-align: center; }
+        /* hamburger: hide desktop nav, show hamburger */
+        .nav-desktop { display: none !important; }
+        .hamburger-btn { display: flex !important; }
+    }
+    @media (min-width: 769px) {
+        .hamburger-btn { display: none !important; }
+        .mobile-nav-drawer { display: none !important; }
+    }
+    .hamburger-btn {
+        background: none; border: none; cursor: pointer;
+        padding: 10px 8px; flex-direction: column; gap: 5px; align-items: center; justify-content: center;
+    }
+    .hamburger-btn span { display: block; width: 24px; height: 2px; background: #e8b84b; border-radius: 2px; transition: all 0.2s; }
+    .mobile-nav-drawer {
+        position: fixed; top: 0; right: 0; width: 240px; height: 100vh;
+        background: linear-gradient(180deg,#0d1b2a,#0f3460);
+        z-index: 99999; padding: 60px 0 20px;
+        box-shadow: -4px 0 24px rgba(0,0,0,0.4);
+        overflow-y: auto; direction: rtl;
+    }
+    .mobile-nav-drawer a {
+        display: block; padding: 14px 24px; color: #ccd6f6;
+        text-decoration: none; font-family: 'Heebo', sans-serif;
+        font-size: 1rem; font-weight: 600; border-bottom: 1px solid rgba(255,255,255,0.07);
+        transition: background 0.15s;
+    }
+    .mobile-nav-drawer a:hover, .mobile-nav-drawer a.active { background: rgba(232,184,75,0.15); color: #e8b84b; }
+    .mobile-nav-overlay {
+        display: none; position: fixed; inset: 0;
+        background: rgba(0,0,0,0.5); z-index: 99998;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -921,8 +951,22 @@ def render_login_page():
 
 
 def _do_login(uid: str, pwd: str):
-    """FIX #11 – הודעות שגיאה מפורטות."""
+    """Login with rate limiting, digit validation, unified error message."""
+    TIMEOUT_SECS = 15 * 60  # 15 min
+    MAX_ATTEMPTS = 5
+    LOCKOUT_SECS = 5 * 60   # 5 min lockout
+
+    # Rate limiting
+    now = datetime.now().timestamp()
+    attempts = st.session_state.get("_login_attempts", 0)
+    lockout_until = st.session_state.get("_lockout_until", 0)
+    if now < lockout_until:
+        remaining = int((lockout_until - now) / 60) + 1
+        st.error(f"🔒 חשבון חסום זמנית עקב ניסיונות כושלים מבו. נסה שוב בעוד {remaining} דקות.")
+        return
+
     if not uid.strip(): st.error("⚠️ נא להזין מספר משתמש"); return
+    if not uid.strip().isdigit(): st.error("⚠️ מספר משתמש חייב להכיל ספרות בלבד"); return
     if not pwd.strip(): st.error("⚠️ נא להזין סיסמה"); return
     try:
         with st.spinner("מתחבר..."):
@@ -931,17 +975,29 @@ def _do_login(uid: str, pwd: str):
         df_users["סיסמה"]       = df_users["סיסמה"].astype(str).str.strip()
         uid_c, pwd_c = uid.strip(), pwd.strip()
         user_row = df_users[df_users["מספר משתמש"] == uid_c]
-        if user_row.empty:
-            st.error("❌ מספר משתמש לא קיים במערכת"); return
-        if user_row.iloc[0]["סיסמה"] != pwd_c:
-            st.error("❌ סיסמה שגויה"); return
+        # Unified error — don't reveal which field is wrong
+        if user_row.empty or user_row.iloc[0]["סיסמה"] != pwd_c:
+            attempts += 1
+            st.session_state._login_attempts = attempts
+            if attempts >= MAX_ATTEMPTS:
+                st.session_state._lockout_until = now + LOCKOUT_SECS
+                st.session_state._login_attempts = 0
+                st.error("🔒 יותר מדי ניסיונות כושלים. החשבון נחסם ל-5 דקות.")
+            else:
+                left = MAX_ATTEMPTS - attempts
+                st.error(f"❌ פרטי ההתחברות שגויים, אנא נסה שוב. ניסיונות נותרות: {left}")
+            return
+        # Success
+        st.session_state._login_attempts = 0
+        st.session_state._lockout_until  = 0
         st.session_state.authenticated = True
         st.session_state.user     = user_row.iloc[0].to_dict()
         st.session_state.is_admin = uid_c in [str(x).strip() for x in admin_ids]
         st.session_state.page     = "app"
+        st.session_state._last_activity = datetime.now().timestamp()
         st.rerun()
     except Exception as e:
-        st.error(f"שגיאת חיבור: {e}")
+        st.error("המערכת מתעדכנת כעת, אנא המתן כדקה ונסה שוב.")
 
 
 # ============================
@@ -1217,7 +1273,32 @@ def render_history(u, is_admin, df_users, df_actions):
     with ex1:
         try:
             buf = BytesIO()
-            filtered.drop(columns=["סכום_num"],errors="ignore").to_excel(buf,index=False,engine="openpyxl")
+            exp_df = filtered.drop(columns=["סכום_num"],errors="ignore")
+            user_name = u.get("שם משתמש", "") if 'u' in dir() else ""
+            with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+                # Write data starting from row 4 (leave space for header)
+                exp_df.to_excel(writer, index=False, startrow=3, sheet_name="פעולות")
+                ws = writer.sheets["פעולות"]
+                # Header rows
+                ws["A1"] = "💰 שיעבודא פון – דו"ח פעולות"
+                ws["A2"] = f"משתמש: {user_name}  |  תאריך הפקה: {datetime.now().strftime('%d/%m/%Y %H:%M')}  |  סך פעולות: {len(exp_df)}"
+                # Style header
+                from openpyxl.styles import Font, PatternFill, Alignment
+                ws["A1"].font = Font(name="Arial", size=14, bold=True, color="1F3460")
+                ws["A2"].font = Font(name="Arial", size=10, color="475569")
+                ws["A1"].alignment = Alignment(horizontal="right")
+                ws["A2"].alignment = Alignment(horizontal="right")
+                # Column headers style (row 4)
+                hdr_fill = PatternFill("solid", fgColor="0F3460")
+                hdr_font = Font(name="Arial", bold=True, color="FFFFFF")
+                for cell in ws[4]:
+                    cell.fill = hdr_fill
+                    cell.font = hdr_font
+                    cell.alignment = Alignment(horizontal="right")
+                # Auto-width columns
+                for col in ws.columns:
+                    max_len = max((len(str(c.value or "")) for c in col), default=8)
+                    ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 40)
             st.download_button("📥 ייצוא Excel", data=buf.getvalue(), file_name="shiabudefon.xlsx",
                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         except Exception: st.warning("התקן openpyxl")
@@ -1248,7 +1329,7 @@ def render_history(u, is_admin, df_users, df_actions):
 
     # דפדוף
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-    PAGE_SIZE   = 15
+    PAGE_SIZE   = 20
     total_pages = max(1,(len(filtered)+PAGE_SIZE-1)//PAGE_SIZE)
     if "hist_page" not in st.session_state: st.session_state.hist_page = 0
     st.session_state.hist_page = min(st.session_state.hist_page, total_pages-1)
@@ -1278,7 +1359,8 @@ def render_history(u, is_admin, df_users, df_actions):
     start   = st.session_state.hist_page * PAGE_SIZE
     page_df = filtered.iloc[::-1].reset_index(drop=True).iloc[start:start+PAGE_SIZE]
 
-    # שורת סיכום לתוצאות הסינון
+    if filtered.empty:
+        render_empty_state("🔍", "לא נמצאו פעולות התואמות את החיפוש שלך", "נסה לשנות את קריתריוני הסינון"); return
     if not filtered.empty and "סכום_num" in filtered.columns:
         f_credits  = filtered[filtered.get("כיוון", pd.Series()) == "זכות"]["סכום_num"].abs().sum() if "כיוון" in filtered.columns else 0
         f_debits   = filtered[filtered.get("כיוון", pd.Series()) == "חובה"]["סכום_num"].abs().sum() if "כיוון" in filtered.columns else 0
@@ -1454,8 +1536,21 @@ def render_info_page(title: str, content: str):
 # MAIN
 # ============================
 def main():
+    SESSION_TIMEOUT = 15 * 60  # 15 דקות
+
     if "page"          not in st.session_state: st.session_state.page = "login"
     if "authenticated" not in st.session_state: st.session_state.authenticated = False
+
+    # Session timeout check
+    if st.session_state.authenticated:
+        now = datetime.now().timestamp()
+        last = st.session_state.get("_last_activity", now)
+        if now - last > SESSION_TIMEOUT:
+            st.session_state.authenticated = False
+            st.session_state.page = "login"
+            st.session_state._timeout_msg = True
+        else:
+            st.session_state._last_activity = now
 
     page = st.session_state.page
     if st.session_state.authenticated and page=="login":
@@ -1470,6 +1565,8 @@ def main():
         return
 
     if page=="login" or not st.session_state.authenticated:
+        if st.session_state.pop("_timeout_msg", False):
+            st.warning("⏰ נותקת עקב חוסר פעילות. אנא התחבר מחדש.")
         render_login_page(); return
 
     u        = st.session_state.user
