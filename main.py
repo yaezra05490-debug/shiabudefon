@@ -1315,7 +1315,7 @@ def render_history(u, is_admin, df_users, df_actions):
                 exp_df.to_excel(writer, index=False, startrow=3, sheet_name="פעולות")
                 ws = writer.sheets["פעולות"]
                 # Header rows
-                ws["A1"] = "💰 שיעבודא פון – דו"ח פעולות"
+                ws["A1"] = "💰 שיעבודא פון – דוח פעולות"
                 ws["A2"] = f"משתמש: {user_name}  |  תאריך הפקה: {datetime.now().strftime('%d/%m/%Y %H:%M')}  |  סך פעולות: {len(exp_df)}"
                 # Style header
                 from openpyxl.styles import Font, PatternFill, Alignment
@@ -1642,7 +1642,7 @@ def main():
         with tab_objs[4]: render_admin(df_users, df_actions)
 
     # Footer
-    st.markdown("""
+    st.markdown(f"""
     <div style="text-align:center;padding:28px 0 12px;color:#cbd5e1;font-size:0.78rem;border-top:1px solid #e2e8f0;margin-top:24px">
         💰 <b style="color:#94a3b8">שיעבודא פון</b> &nbsp;&middot;&nbsp; מערכת פיננסית מתקדמת &nbsp;&middot;&nbsp;
         כל הזכויות שמורות &copy; {datetime.now().year}
